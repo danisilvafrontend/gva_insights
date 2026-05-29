@@ -29,9 +29,13 @@ $created_by        = intval($_SESSION['user_id']);
 
 // Datas
 $deadline = null;
+$deadline_raw = '';
 if (!empty($_POST['deadline'])) {
     $d = DateTime::createFromFormat('Y-m-d', $_POST['deadline']);
-    if ($d) $deadline = "'" . $d->format('Y-m-d') . "'";
+    if ($d) {
+        $deadline     = "'" . $d->format('Y-m-d') . "'";
+        $deadline_raw = $d->format('Y-m-d');
+    }
 }
 
 $data_acao = null;
@@ -83,23 +87,31 @@ try {
     $conn->commit();
 
     // ----- Notificar Teams (usa $conn ainda aberto) -----
-    $nomeResp = 'N/A';
-    $nomeCat  = 'N/A';
+    $nomeResp  = 'N/A';
+    $nomeCat   = 'N/A';
+    $emailResp = '';
 
-    $rNome = $conn->query("SELECT nome FROM usuarios WHERE id = $id_usuario LIMIT 1");
-    if ($rNome && $row = $rNome->fetch_assoc()) $nomeResp = $row['nome'];
+    // Busca nome + email do responsavel
+    $rUser = $conn->query("SELECT nome, email FROM usuarios WHERE id = $id_usuario LIMIT 1");
+    if ($rUser && $row = $rUser->fetch_assoc()) {
+        $nomeResp  = $row['nome'];
+        $emailResp = $row['email'];
+    }
 
     $rCat = $conn->query("SELECT nome FROM bdna_categorias WHERE id = $id_categoria LIMIT 1");
     if ($rCat && $row = $rCat->fetch_assoc()) $nomeCat = $row['nome'];
 
     notificarTeams([
-        'responsavel' => $nomeResp,
-        'categoria'   => $nomeCat,
-        'tarefa'      => stripslashes($tarefa),
-        'mes'         => $mes_referencia,
-        'deadline'    => !empty($_POST['deadline']) ? $_POST['deadline'] : '',
-        'prioridade'  => stripslashes($prioridade),
-        'status'      => stripslashes($status),
+        'responsavel'  => $nomeResp,
+        'email'        => $emailResp,   // usado pelo Power Automate para notificar + calendario
+        'categoria'    => $nomeCat,
+        'tarefa'       => stripslashes($tarefa),
+        'mes'          => $mes_referencia,
+        'deadline'     => $deadline_raw, // formato YYYY-MM-DD para o Power Automate
+        'prioridade'   => stripslashes($prioridade),
+        'status'       => stripslashes($status),
+        'observacoes'  => stripslashes($observacoes),
+        'link_sistema' => 'https://insights.gvacompany.com/brasil_dna/',
     ]);
     // ----------------------------
 
