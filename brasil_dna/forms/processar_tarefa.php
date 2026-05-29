@@ -4,7 +4,8 @@ if (!isset($_SESSION['user_id'])) { header('Location: ../../index.php'); exit; }
 
 include '../../includes/config.php';
 include '../../includes/db_connect.php';
-include '../teams_webhook.php'; // webhook Teams
+include '../teams_webhook.php';
+include '../enviar_email.php';
 mysqli_set_charset($conn, 'utf8mb4');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -86,12 +87,11 @@ try {
 
     $conn->commit();
 
-    // ----- Notificar Teams (usa $conn ainda aberto) -----
+    // ----- Buscar dados do responsavel -----
     $nomeResp  = 'N/A';
     $nomeCat   = 'N/A';
     $emailResp = '';
 
-    // Busca nome + email do responsavel
     $rUser = $conn->query("SELECT nome, email FROM usuarios WHERE id = $id_usuario LIMIT 1");
     if ($rUser && $row = $rUser->fetch_assoc()) {
         $nomeResp  = $row['nome'];
@@ -101,19 +101,24 @@ try {
     $rCat = $conn->query("SELECT nome FROM bdna_categorias WHERE id = $id_categoria LIMIT 1");
     if ($rCat && $row = $rCat->fetch_assoc()) $nomeCat = $row['nome'];
 
-    notificarTeams([
+    $dadosNotif = [
         'responsavel'  => $nomeResp,
-        'email'        => $emailResp,   // usado pelo Power Automate para notificar + calendario
+        'email'        => $emailResp,
         'categoria'    => $nomeCat,
         'tarefa'       => stripslashes($tarefa),
         'mes'          => $mes_referencia,
-        'deadline'     => $deadline_raw, // formato YYYY-MM-DD para o Power Automate
+        'deadline'     => $deadline_raw,
         'prioridade'   => stripslashes($prioridade),
         'status'       => stripslashes($status),
         'observacoes'  => stripslashes($observacoes),
         'link_sistema' => 'https://insights.gvacompany.com/brasil_dna/',
-    ]);
-    // ----------------------------
+    ];
+
+    // ----- Notificar Teams (card no canal) -----
+    notificarTeams($dadosNotif);
+
+    // ----- E-mail com convite .ics para o responsavel -----
+    enviarEmailTarefa($dadosNotif);
 
     $conn->close();
     header('Location: ../index.php?ok=1');
