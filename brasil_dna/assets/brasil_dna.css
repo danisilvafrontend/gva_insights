@@ -1,0 +1,562 @@
+/* =====================================================
+   BRASIL DNA — CSS do módulo
+   Estilo inspirado no Asana: limpo, funcional, cores vivas
+   ===================================================== */
+
+:root {
+  --bdna-bg:           #f5f5f5;
+  --bdna-surface:      #ffffff;
+  --bdna-border:       #e0e0e0;
+  --bdna-text:         #1a1a2e;
+  --bdna-text-muted:   #6b7280;
+  --bdna-primary:      #0077B6;
+  --bdna-primary-dark: #005f8e;
+  --bdna-accent:       #00B4D8;
+  --bdna-green:        #22c55e;
+  --bdna-yellow:       #f59e0b;
+  --bdna-red:          #ef4444;
+  --bdna-purple:       #8b5cf6;
+  --bdna-gray:         #9ca3af;
+  --bdna-radius:       8px;
+  --bdna-radius-sm:    4px;
+  --bdna-shadow:       0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+  --bdna-shadow-md:    0 4px 12px rgba(0,0,0,.10);
+  --bdna-font:         'Inter', 'Segoe UI', system-ui, sans-serif;
+}
+
+/* ---- Layout base ---- */
+body.bdna-page {
+  background: var(--bdna-bg);
+  font-family: var(--bdna-font);
+  color: var(--bdna-text);
+  font-size: 14px;
+}
+
+.bdna-wrapper {
+  display: flex;
+  min-height: 100vh;
+}
+
+.bdna-main {
+  flex: 1;
+  padding: 24px 32px;
+  max-width: 1280px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ---- Header da página ---- */
+.bdna-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.bdna-page-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--bdna-text);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bdna-page-title .bdna-flag {
+  font-size: 24px;
+}
+
+/* ---- KPI Cards ---- */
+.bdna-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 14px;
+  margin-bottom: 28px;
+}
+
+.bdna-kpi-card {
+  background: var(--bdna-surface);
+  border-radius: var(--bdna-radius);
+  padding: 16px 20px;
+  box-shadow: var(--bdna-shadow);
+  border-left: 4px solid var(--bdna-primary);
+  transition: box-shadow .2s;
+}
+
+.bdna-kpi-card:hover {
+  box-shadow: var(--bdna-shadow-md);
+}
+
+.bdna-kpi-card.kpi-done   { border-left-color: var(--bdna-green); }
+.bdna-kpi-card.kpi-prog   { border-left-color: var(--bdna-yellow); }
+.bdna-kpi-card.kpi-late   { border-left-color: var(--bdna-red); }
+.bdna-kpi-card.kpi-total  { border-left-color: var(--bdna-primary); }
+
+.bdna-kpi-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--bdna-text-muted);
+  margin-bottom: 6px;
+}
+
+.bdna-kpi-value {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.bdna-kpi-card.kpi-done  .bdna-kpi-value { color: var(--bdna-green); }
+.bdna-kpi-card.kpi-prog  .bdna-kpi-value { color: var(--bdna-yellow); }
+.bdna-kpi-card.kpi-late  .bdna-kpi-value { color: var(--bdna-red); }
+.bdna-kpi-card.kpi-total .bdna-kpi-value { color: var(--bdna-primary); }
+
+/* ---- Filtros ---- */
+.bdna-filters {
+  background: var(--bdna-surface);
+  border-radius: var(--bdna-radius);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  box-shadow: var(--bdna-shadow);
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.bdna-filters .filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+}
+
+.bdna-filters label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--bdna-text-muted);
+}
+
+.bdna-filters select,
+.bdna-filters input {
+  border: 1px solid var(--bdna-border);
+  border-radius: var(--bdna-radius-sm);
+  padding: 7px 10px;
+  font-size: 13px;
+  background: #fff;
+  color: var(--bdna-text);
+  outline: none;
+  transition: border-color .2s;
+}
+
+.bdna-filters select:focus,
+.bdna-filters input:focus {
+  border-color: var(--bdna-primary);
+  box-shadow: 0 0 0 3px rgba(0,119,182,.15);
+}
+
+/* ---- Tabela de tarefas ---- */
+.bdna-table-wrap {
+  background: var(--bdna-surface);
+  border-radius: var(--bdna-radius);
+  box-shadow: var(--bdna-shadow);
+  overflow: hidden;
+}
+
+.bdna-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.bdna-table thead th {
+  background: #f8fafc;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--bdna-text-muted);
+  padding: 12px 16px;
+  border-bottom: 2px solid var(--bdna-border);
+  white-space: nowrap;
+}
+
+.bdna-table tbody tr {
+  border-bottom: 1px solid var(--bdna-border);
+  transition: background .15s;
+}
+
+.bdna-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.bdna-table tbody tr:hover {
+  background: #f0f7ff;
+}
+
+.bdna-table td {
+  padding: 12px 16px;
+  vertical-align: middle;
+  font-size: 13px;
+}
+
+.bdna-task-name {
+  font-weight: 500;
+  color: var(--bdna-text);
+  max-width: 320px;
+}
+
+.bdna-task-name small {
+  display: block;
+  color: var(--bdna-text-muted);
+  font-weight: 400;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+/* ---- Badges de status ---- */
+.bdna-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.bdna-badge.status-pendente     { background:#f3f4f6; color:#6b7280; }
+.bdna-badge.status-em_andamento { background:#fef3c7; color:#92400e; }
+.bdna-badge.status-produzindo   { background:#ede9fe; color:#5b21b6; }
+.bdna-badge.status-aguardando   { background:#dbeafe; color:#1e40af; }
+.bdna-badge.status-enviado      { background:#d1fae5; color:#065f46; }
+.bdna-badge.status-publicado    { background:#bbf7d0; color:#14532d; }
+.bdna-badge.status-done         { background:#dcfce7; color:#166534; }
+
+/* ---- Badges de prioridade ---- */
+.bdna-pri {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.bdna-pri.pri-alta  { background:#fee2e2; color:#991b1b; }
+.bdna-pri.pri-media { background:#fef3c7; color:#92400e; }
+.bdna-pri.pri-baixa { background:#f0fdf4; color:#166534; }
+
+/* ---- Badge categoria ---- */
+.bdna-cat-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.bdna-cat-dot::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+/* ---- Deadline ---- */
+.bdna-deadline {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.bdna-deadline.atrasado {
+  color: var(--bdna-red);
+  font-weight: 600;
+}
+
+.bdna-deadline.hoje {
+  color: var(--bdna-yellow);
+  font-weight: 600;
+}
+
+/* ---- Avatar responsável ---- */
+.bdna-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bdna-primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.bdna-user-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+/* ---- Ações inline ---- */
+.bdna-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.bdna-btn-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--bdna-radius-sm);
+  border: 1px solid var(--bdna-border);
+  background: #fff;
+  color: var(--bdna-text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all .15s;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.bdna-btn-icon:hover {
+  background: var(--bdna-primary);
+  border-color: var(--bdna-primary);
+  color: #fff;
+}
+
+.bdna-btn-icon.del:hover {
+  background: var(--bdna-red);
+  border-color: var(--bdna-red);
+}
+
+/* ---- Select de status inline ---- */
+.bdna-status-select {
+  border: none;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  padding: 0;
+  color: inherit;
+}
+
+/* ---- Formulário modal / página ---- */
+.bdna-form-card {
+  background: var(--bdna-surface);
+  border-radius: var(--bdna-radius);
+  box-shadow: var(--bdna-shadow-md);
+  padding: 32px;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.bdna-form-card h5 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 24px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--bdna-border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bdna-form-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--bdna-border);
+}
+
+.bdna-form-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--bdna-text-muted);
+  margin-bottom: 14px;
+}
+
+.bdna-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 600px) {
+  .bdna-form-row { grid-template-columns: 1fr; }
+  .bdna-main { padding: 16px; }
+  .bdna-filters { flex-direction: column; }
+}
+
+.bdna-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 5px;
+  color: var(--bdna-text);
+}
+
+.bdna-label .req {
+  color: var(--bdna-red);
+  margin-left: 2px;
+}
+
+.bdna-input,
+.bdna-select,
+.bdna-textarea {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--bdna-border);
+  border-radius: var(--bdna-radius-sm);
+  font-size: 13px;
+  font-family: var(--bdna-font);
+  color: var(--bdna-text);
+  background: #fff;
+  transition: border-color .2s, box-shadow .2s;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.bdna-input:focus,
+.bdna-select:focus,
+.bdna-textarea:focus {
+  border-color: var(--bdna-primary);
+  box-shadow: 0 0 0 3px rgba(0,119,182,.15);
+}
+
+.bdna-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.bdna-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.bdna-checkboxes label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #f8fafc;
+  border: 1px solid var(--bdna-border);
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all .15s;
+}
+
+.bdna-checkboxes label:hover {
+  border-color: var(--bdna-primary);
+  background: #e0f0fb;
+}
+
+.bdna-checkboxes input[type=checkbox]:checked + span {
+  font-weight: 600;
+  color: var(--bdna-primary);
+}
+
+/* ---- Botões ---- */
+.bdna-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 20px;
+  border-radius: var(--bdna-radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all .2s;
+  text-decoration: none;
+}
+
+.bdna-btn-primary {
+  background: var(--bdna-primary);
+  color: #fff;
+}
+
+.bdna-btn-primary:hover {
+  background: var(--bdna-primary-dark);
+  color: #fff;
+}
+
+.bdna-btn-outline {
+  background: transparent;
+  color: var(--bdna-text-muted);
+  border: 1px solid var(--bdna-border);
+}
+
+.bdna-btn-outline:hover {
+  background: #f3f4f6;
+  color: var(--bdna-text);
+}
+
+.bdna-btn-success {
+  background: var(--bdna-green);
+  color: #fff;
+}
+
+.bdna-btn-success:hover {
+  background: #16a34a;
+  color: #fff;
+}
+
+/* ---- Empty state ---- */
+.bdna-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--bdna-text-muted);
+}
+
+.bdna-empty i {
+  font-size: 48px;
+  opacity: .3;
+  display: block;
+  margin-bottom: 12px;
+}
+
+.bdna-empty p {
+  font-size: 14px;
+}
+
+/* ---- Toast de feedback ---- */
+.bdna-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--bdna-text);
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: var(--bdna-radius);
+  font-size: 13px;
+  box-shadow: var(--bdna-shadow-md);
+  z-index: 9999;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: all .3s;
+  pointer-events: none;
+}
+
+.bdna-toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.bdna-toast.success { background: var(--bdna-green); }
+.bdna-toast.error   { background: var(--bdna-red); }
