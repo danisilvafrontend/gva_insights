@@ -82,15 +82,15 @@ try {
 
     $conn->commit();
 
-    // ----- Notificar Teams -----
-    // Buscar nome do responsável e categoria para o card
-    $connN = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
-    $connN->set_charset('utf8mb4');
-    $rNome = $connN->query("SELECT nome FROM usuarios WHERE id = $id_usuario");
-    $rCat  = $connN->query("SELECT nome FROM bdna_categorias WHERE id = $id_categoria");
-    $nomeResp = $rNome ? $rNome->fetch_assoc()['nome'] : 'N/A';
-    $nomeCat  = $rCat  ? $rCat->fetch_assoc()['nome']  : 'N/A';
-    $connN->close();
+    // ----- Notificar Teams (usa $conn ainda aberto) -----
+    $nomeResp = 'N/A';
+    $nomeCat  = 'N/A';
+
+    $rNome = $conn->query("SELECT nome FROM usuarios WHERE id = $id_usuario LIMIT 1");
+    if ($rNome && $row = $rNome->fetch_assoc()) $nomeResp = $row['nome'];
+
+    $rCat = $conn->query("SELECT nome FROM bdna_categorias WHERE id = $id_categoria LIMIT 1");
+    if ($rCat && $row = $rCat->fetch_assoc()) $nomeCat = $row['nome'];
 
     notificarTeams([
         'responsavel' => $nomeResp,
