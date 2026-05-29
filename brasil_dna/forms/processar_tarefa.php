@@ -4,6 +4,7 @@ if (!isset($_SESSION['user_id'])) { header('Location: ../../index.php'); exit; }
 
 include '../../includes/config.php';
 include '../../includes/db_connect.php';
+include '../teams_webhook.php'; // webhook Teams
 mysqli_set_charset($conn, 'utf8mb4');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -12,19 +13,19 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // --- Sanitizar entradas ---
-$id_usuario       = intval($_POST['id_usuario'] ?? 0);
-$id_categoria     = intval($_POST['id_categoria'] ?? 0);
-$mes_referencia   = $conn->real_escape_string(trim($_POST['mes_referencia'] ?? ''));
-$acao             = $conn->real_escape_string(trim($_POST['acao'] ?? ''));
-$tarefa           = $conn->real_escape_string(trim($_POST['tarefa'] ?? ''));
-$tema_conteudo    = $conn->real_escape_string(trim($_POST['tema_conteudo'] ?? ''));
+$id_usuario        = intval($_POST['id_usuario'] ?? 0);
+$id_categoria      = intval($_POST['id_categoria'] ?? 0);
+$mes_referencia    = $conn->real_escape_string(trim($_POST['mes_referencia'] ?? ''));
+$acao              = $conn->real_escape_string(trim($_POST['acao'] ?? ''));
+$tarefa            = $conn->real_escape_string(trim($_POST['tarefa'] ?? ''));
+$tema_conteudo     = $conn->real_escape_string(trim($_POST['tema_conteudo'] ?? ''));
 $detalhes_promocao = $conn->real_escape_string(trim($_POST['detalhes_promocao'] ?? ''));
-$observacoes      = $conn->real_escape_string(trim($_POST['observacoes'] ?? ''));
-$notes            = $conn->real_escape_string(trim($_POST['notes'] ?? ''));
-$link_externo     = $conn->real_escape_string(trim($_POST['link_externo'] ?? ''));
-$status           = $conn->real_escape_string($_POST['status'] ?? 'Pendente');
-$prioridade       = $conn->real_escape_string($_POST['prioridade'] ?? 'Media');
-$created_by       = intval($_SESSION['user_id']);
+$observacoes       = $conn->real_escape_string(trim($_POST['observacoes'] ?? ''));
+$notes             = $conn->real_escape_string(trim($_POST['notes'] ?? ''));
+$link_externo      = $conn->real_escape_string(trim($_POST['link_externo'] ?? ''));
+$status            = $conn->real_escape_string($_POST['status'] ?? 'Pendente');
+$prioridade        = $conn->real_escape_string($_POST['prioridade'] ?? 'Media');
+$created_by        = intval($_SESSION['user_id']);
 
 // Datas
 $deadline = null;
@@ -80,6 +81,28 @@ try {
     $stmtH->close();
 
     $conn->commit();
+
+    // ----- Notificar Teams -----
+    // Buscar nome do responsável e categoria para o card
+    $connN = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
+    $connN->set_charset('utf8mb4');
+    $rNome = $connN->query("SELECT nome FROM usuarios WHERE id = $id_usuario");
+    $rCat  = $connN->query("SELECT nome FROM bdna_categorias WHERE id = $id_categoria");
+    $nomeResp = $rNome ? $rNome->fetch_assoc()['nome'] : 'N/A';
+    $nomeCat  = $rCat  ? $rCat->fetch_assoc()['nome']  : 'N/A';
+    $connN->close();
+
+    notificarTeams([
+        'responsavel' => $nomeResp,
+        'categoria'   => $nomeCat,
+        'tarefa'      => stripslashes($tarefa),
+        'mes'         => $mes_referencia,
+        'deadline'    => !empty($_POST['deadline']) ? $_POST['deadline'] : '',
+        'prioridade'  => stripslashes($prioridade),
+        'status'      => stripslashes($status),
+    ]);
+    // ----------------------------
+
     $conn->close();
     header('Location: ../index.php?ok=1');
     exit;

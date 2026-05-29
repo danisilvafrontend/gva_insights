@@ -1,17 +1,12 @@
 <?php
 // teams_webhook.php
-// ⚠️  A URL do webhook é definida em includes/config.php (fora do git)
-// Adicione esta linha no seu includes/config.php no servidor:
-// define('TEAMS_WEBHOOK_URL', 'SUA_URL_AQUI');
-
-if (!defined('TEAMS_WEBHOOK_URL')) {
-    define('TEAMS_WEBHOOK_URL', '');
-}
+// A URL é definida em includes/db_connect.php (fora do git) via:
+// define('TEAMS_WEBHOOK_URL', 'sua_url_aqui');
 
 function notificarTeams(array $dados): bool {
 
+    if (!defined('TEAMS_WEBHOOK_URL') || empty(TEAMS_WEBHOOK_URL)) return false;
     $url = TEAMS_WEBHOOK_URL;
-    if (empty($url)) return false;
 
     $emojis = [
         'Gestão & Planejamento' => '📊',
