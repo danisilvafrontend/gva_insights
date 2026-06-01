@@ -11,27 +11,24 @@
  *   define('MAIL_FROM',      'seuemail@gvacompany.com');
  *   define('MAIL_FROM_NAME', 'Brasil DNA 2026 | GVA');
  *
- * Instalar PHPMailer (uma vez no servidor):
+ * Instalar PHPMailer (uma vez no servidor via SSH):
+ *   cd /home2/globalvisionacce/insights.gvacompany.com
  *   composer require phpmailer/phpmailer
  */
 
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\SMTP;
-use PHPMailer\PHPMailer\Exception;
-
-// Autoload Composer — caminho relativo à raiz da aplicação
-$composerAutoload = __DIR__ . '/../../vendor/autoload.php';
-if (!file_exists($composerAutoload)) {
-    error_log('enviar_email.php: vendor/autoload.php não encontrado. Rode: composer require phpmailer/phpmailer');
-    // Função fica definida mas retorna false sem quebrar o sistema
-    if (!function_exists('enviarEmailTarefa')) {
-        function enviarEmailTarefa(array $dados): bool { return false; }
-    }
-    return;
+// Autoload Composer — carrega apenas se existir (não quebra o sistema se faltar)
+$_composerAutoload = __DIR__ . '/../../vendor/autoload.php';
+if (file_exists($_composerAutoload)) {
+    require_once $_composerAutoload;
 }
-require_once $composerAutoload;
 
 function enviarEmailTarefa(array $dados): bool {
+
+    // Se PHPMailer não estiver disponível, loga e retorna sem quebrar
+    if (!class_exists('\\PHPMailer\\PHPMailer\\PHPMailer')) {
+        error_log('enviarEmailTarefa: PHPMailer não encontrado. Rode: composer require phpmailer/phpmailer');
+        return false;
+    }
 
     if (empty($dados['email']) || !filter_var($dados['email'], FILTER_VALIDATE_EMAIL)) {
         return false;
@@ -71,9 +68,9 @@ function enviarEmailTarefa(array $dados): bool {
     $orgEmail   = defined('MAIL_FROM')      ? MAIL_FROM      : 'noreply@gvacompany.com';
     $orgName    = defined('MAIL_FROM_NAME') ? MAIL_FROM_NAME : 'Brasil DNA 2026';
     $summaryICS = 'Tarefa Brasil DNA 2026: ' . $tarefa;
-    $descICS    = 'Categoria: '  . $categoria  . '\nMes: '       . $mes
-                . '\nPrioridade: ' . $prioridade . '\nStatus: '   . $status
-                . '\nObs: '      . $obs         . '\nSistema: '  . $link;
+    $descICS    = 'Categoria: '  . $categoria  . '\nMes: '        . $mes
+                . '\nPrioridade: ' . $prioridade . '\nStatus: '    . $status
+                . '\nObs: '      . $obs         . '\nSistema: '   . $link;
 
     $ics  = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n";
     $ics .= "PRODID:-//GVA Brasil DNA 2026//PT\r\nMETHOD:REQUEST\r\n";
@@ -144,19 +141,18 @@ function enviarEmailTarefa(array $dados): bool {
     // ENVIAR VIA PHPMAILER (Office365 / STARTTLS)
     // =========================================================
     try {
-        $mail = new PHPMailer(true);
+        // Usa nome completo da classe — sem depender do "use" global
+        $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
 
-        // Servidor SMTP
         $mail->isSMTP();
         $mail->Host       = defined('MAIL_HOST') ? MAIL_HOST : 'smtp.office365.com';
         $mail->SMTPAuth   = true;
         $mail->Username   = defined('MAIL_USER') ? MAIL_USER : '';
         $mail->Password   = defined('MAIL_PASS') ? MAIL_PASS : '';
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->SMTPSecure = \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port       = defined('MAIL_PORT') ? MAIL_PORT : 587;
         $mail->CharSet    = 'UTF-8';
 
-        // Remetente e destinatário
         $mail->setFrom(
             defined('MAIL_FROM')      ? MAIL_FROM      : '',
             defined('MAIL_FROM_NAME') ? MAIL_FROM_NAME : 'Brasil DNA 2026'
@@ -164,19 +160,22 @@ function enviarEmailTarefa(array $dados): bool {
         $mail->addAddress($para, $nome);
         $mail->addReplyTo(defined('MAIL_FROM') ? MAIL_FROM : '', 'No Reply');
 
-        // Conteúdo
         $mail->isHTML(true);
         $mail->Subject = '📋 Nova Tarefa: ' . $tarefa . ' — Brasil DNA 2026';
         $mail->Body    = $html;
         $mail->AltBody = 'Nova tarefa atribuída: ' . $tarefa . ' | Deadline: ' . $deadlineExib;
 
-        // Anexo .ics
-        $mail->addStringAttachment($ics, 'tarefa_brasildna.ics', PHPMailer::ENCODING_BASE64, 'text/calendar; method=REQUEST');
+        $mail->addStringAttachment(
+            $ics,
+            'tarefa_brasildna.ics',
+            \PHPMailer\PHPMailer\PHPMailer::ENCODING_BASE64,
+            'text/calendar; method=REQUEST'
+        );
 
         $mail->send();
         return true;
 
-    } catch (Exception $e) {
+    } catch (\Exception $e) {
         error_log('enviarEmailTarefa erro: ' . $e->getMessage());
         return false;
     }
