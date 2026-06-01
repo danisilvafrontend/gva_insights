@@ -1,32 +1,50 @@
 <?php
 session_start();
-header('Content-Type: application/json');
-if (!isset($_SESSION['usuario_id'])) { echo json_encode(['success'=>false]); exit; }
+if (!isset($_SESSION['usuario_id'])) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'msg' => 'Não autorizado']);
+    exit;
+}
 require_once '../../config/db_connect.php';
+mysqli_set_charset($conn, 'utf8mb4');
 
-$userId  = $_SESSION['usuario_id'];
-$isAdmin = ($_SESSION['usuario_perfil'] ?? 'user') === 'admin';
-$id      = (int)($_POST['id'] ?? 0);
-$status  = $conn->real_escape_string(trim($_POST['status'] ?? ''));
+header('Content-Type: application/json');
 
-$allowed = ['Done','Em andamento','Produzindo','Enviado','Publicado','Aguardando','Pendente','Atrasado'];
-if (!$id || !in_array($status, $allowed)) { echo json_encode(['success'=>false]); exit; }
+$id     = (int)($_POST['id']     ?? 0);
+$status = trim($_POST['status']  ?? '');
 
-$sqlCheck = $isAdmin
-    ? "SELECT id, status, deadline FROM demandas WHERE id = $id"
-    : "SELECT id, status, deadline FROM demandas WHERE id = $id AND id_usuario = $userId";
+$statusValidos = ['Done','Em andamento','Produzindo','Enviado','Publicado','Aguardando','Pendente','Atrasado'];
 
-$res = $conn->query($sqlCheck);
-if (!$res || $res->num_rows === 0) { echo json_encode(['success'=>false]); exit; }
-$old = $res->fetch_assoc();
-
-$conn->query("UPDATE demandas SET status = '$status', updated_at = NOW() WHERE id = $id");
-
-if ($old['status'] !== $status) {
-    $conn->query("INSERT INTO demandas_historico (id_demanda, id_usuario, status_anterior, status_novo, created_at) VALUES ($id, $userId, '{$old['status']}', '$status', NOW())");
+if (!$id || !in_array($status, $statusValidos)) {
+    echo json_encode(['success' => false, 'msg' => 'Dados inválidos']);
+    exit;
 }
 
-$hoje = date('Y-m-d');
-$atrasado = ($old['deadline'] && $old['deadline'] < $hoje && $status !== 'Done');
+$userId   = (int)$_SESSION['usuario_id'];
+$isPerfil = $_SESSION['usuario_perfil'] ?? 'user';
+$isAdmin  = ($isPerfil === 'admin');
 
-echo json_encode(['success'=>true, 'atrasado'=>$atrasado]);
+// Usuário comum só pode alterar suas próprias demandas
+$sql = $isAdmin
+    ? "UPDATE demandas SET status = ? WHERE id = ?"
+    : "UPDATE demandas SET status = ? WHERE id = ? AND id_usuario = ?";
+
+$stmt = $conn->prepare($sql);
+if ($isAdmin) {
+    $stmt->bind_param('si', $status, $id);
+} else {
+    $stmt->bind_param('sii', $status, $id, $userId);
+}
+
+$ok = $stmt->execute();
+$stmt->close();
+
+// Verifica se ficou atrasado (deadline < hoje e status != Done)
+$atrasado = false;
+$row = $conn->query("SELECT deadline FROM demandas WHERE id = $id")->fetch_assoc();
+if ($row && !empty($row['deadline'])) {
+    $atrasado = ($row['deadline'] < date('Y-m-d') && $status !== 'Done');
+}
+
+$conn->close();
+echo json_encode(['success' => $ok, 'atrasado' => $atrasado]);
