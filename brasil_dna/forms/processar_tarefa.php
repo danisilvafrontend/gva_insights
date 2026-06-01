@@ -29,7 +29,7 @@ $prioridade        = $conn->real_escape_string($_POST['prioridade'] ?? 'Media');
 $created_by        = intval($_SESSION['user_id']);
 
 // Datas
-$deadline = null;
+$deadline     = null;
 $deadline_raw = '';
 if (!empty($_POST['deadline'])) {
     $d = DateTime::createFromFormat('Y-m-d', $_POST['deadline']);
@@ -46,7 +46,7 @@ if (!empty($_POST['data_acao'])) {
 }
 
 if (!$tarefa || !$id_categoria || !$id_usuario) {
-    echo "<script>alert('Preencha os campos obrigatórios.'); history.back();</script>";
+    echo "<script>alert('Preencha os campos obrigat\u00f3rios.'); history.back();</script>";
     exit;
 }
 
@@ -87,7 +87,7 @@ try {
 
     $conn->commit();
 
-    // ----- Buscar dados do responsavel -----
+    // ----- Buscar dados do responsável -----
     $nomeResp  = 'N/A';
     $nomeCat   = 'N/A';
     $emailResp = '';
@@ -102,6 +102,7 @@ try {
     if ($rCat && $row = $rCat->fetch_assoc()) $nomeCat = $row['nome'];
 
     $dadosNotif = [
+        'id_usuario'   => $id_usuario,          // ← necessario para notificarTeamsChat()
         'responsavel'  => $nomeResp,
         'email'        => $emailResp,
         'categoria'    => $nomeCat,
@@ -114,10 +115,13 @@ try {
         'link_sistema' => 'https://insights.gvacompany.com/brasil_dna/',
     ];
 
-    // ----- Notificar Teams (card no canal) -----
+    // ----- Notificar canal do Teams (toda a equipe) -----
     notificarTeams($dadosNotif);
 
-    // ----- E-mail com convite .ics para o responsavel -----
+    // ----- Notificar chat privado do responsável no Teams -----
+    notificarTeamsChat($dadosNotif);
+
+    // ----- E-mail com convite .ics para o responsável -----
     enviarEmailTarefa($dadosNotif);
 
     $conn->close();
