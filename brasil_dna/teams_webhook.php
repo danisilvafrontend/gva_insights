@@ -12,29 +12,22 @@
 //   ]);
 
 // ============================================================
-// HELPER — gera link do Teams Calendar (abre no app Teams)
-// Formato: https://teams.microsoft.com/l/meeting/new?...
-// O Teams detecta se o app está instalado e abre nele;
-// caso contrário, cai no Teams Web.
+// HELPER — gera link para a página agenda.php (intermediária)
+// que oferece botões para Outlook App e Outlook Web
 // ============================================================
-function _teamsCalendarLink(string $titulo, string $deadlineYmd, string $descricao = ''): string {
+function _agendaLink(string $titulo, string $deadlineYmd, string $descricao = ''): string {
     if (empty($deadlineYmd)) return '';
 
     $dt = DateTime::createFromFormat('Y-m-d', $deadlineYmd);
     if (!$dt) return '';
 
-    // Teams espera formato ISO 8601 sem espaços
-    $startDt = $dt->format('Y-m-d') . 'T09:00:00';  // 09h
-    $endDt   = $dt->format('Y-m-d') . 'T10:00:00';  // 10h
-
     $params = http_build_query([
-        'subject'   => $titulo,
-        'startTime' => $startDt,
-        'endTime'   => $endDt,
-        'content'   => $descricao,
+        'subject' => $titulo,
+        'date'    => $dt->format('Y-m-d'),
+        'desc'    => $descricao,
     ]);
 
-    return 'https://teams.microsoft.com/l/meeting/new?' . $params;
+    return 'https://insights.gvacompany.com/brasil_dna/agenda.php?' . $params;
 }
 
 // ============================================================
@@ -68,7 +61,7 @@ function notificarTeams(array $dados): bool {
              . ' | Prioridade: ' . ($dados['prioridade'] ?? '')
              . ' | ' . ($dados['link_sistema'] ?? '');
 
-    $calLink = _teamsCalendarLink(
+    $agendaLink = _agendaLink(
         'Brasil DNA 2026: ' . $dados['tarefa'],
         $dados['deadline'] ?? '',
         $descCal
@@ -79,11 +72,11 @@ function notificarTeams(array $dados): bool {
         "title" => "🔗 Ver no Sistema",
         "url"   => $dados['link_sistema'] ?? "https://insights.gvacompany.com/brasil_dna/"
     ]];
-    if (!empty($calLink)) {
+    if (!empty($agendaLink)) {
         $actions[] = [
             "type"  => "Action.OpenUrl",
-            "title" => "📅 Adicionar ao Teams Calendar",
-            "url"   => $calLink
+            "title" => "📅 Adicionar à Agenda",
+            "url"   => $agendaLink
         ];
     }
 
@@ -157,7 +150,7 @@ function notificarTeamsChat(array $dados): bool {
              . ' | Prioridade: ' . ($dados['prioridade'] ?? '')
              . ' | ' . ($dados['link_sistema'] ?? '');
 
-    $calLink = _teamsCalendarLink(
+    $agendaLink = _agendaLink(
         'Brasil DNA 2026: ' . $dados['tarefa'],
         $dados['deadline'] ?? '',
         $descCal
@@ -168,11 +161,11 @@ function notificarTeamsChat(array $dados): bool {
         "title" => "🔗 Ver no Sistema",
         "url"   => $dados['link_sistema'] ?? "https://insights.gvacompany.com/brasil_dna/"
     ]];
-    if (!empty($calLink)) {
+    if (!empty($agendaLink)) {
         $actions[] = [
             "type"  => "Action.OpenUrl",
-            "title" => "📅 Adicionar ao Teams Calendar",
-            "url"   => $calLink
+            "title" => "📅 Adicionar à Agenda",
+            "url"   => $agendaLink
         ];
     }
 
