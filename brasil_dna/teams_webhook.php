@@ -12,29 +12,29 @@
 //   ]);
 
 // ============================================================
-// HELPER — gera link do Outlook Web para adicionar evento
+// HELPER — gera link do Teams Calendar (abre no app Teams)
+// Formato: https://teams.microsoft.com/l/meeting/new?...
+// O Teams detecta se o app está instalado e abre nele;
+// caso contrário, cai no Teams Web.
 // ============================================================
-function _outlookCalendarLink(string $titulo, string $deadlineYmd, string $descricao = ''): string {
-    // deadlineYmd = 'YYYY-MM-DD' ou vazio
+function _teamsCalendarLink(string $titulo, string $deadlineYmd, string $descricao = ''): string {
     if (empty($deadlineYmd)) return '';
 
     $dt = DateTime::createFromFormat('Y-m-d', $deadlineYmd);
     if (!$dt) return '';
 
-    // Outlook Web deep-link: evento de dia inteiro
-    $startDt  = $dt->format('Y-m-d') . 'T09:00:00';   // 09h
-    $endDt    = $dt->format('Y-m-d') . 'T10:00:00';   // 10h
+    // Teams espera formato ISO 8601 sem espaços
+    $startDt = $dt->format('Y-m-d') . 'T09:00:00';  // 09h
+    $endDt   = $dt->format('Y-m-d') . 'T10:00:00';  // 10h
 
     $params = http_build_query([
-        'path'     => '/calendar/action/compose',
-        'rru'      => 'addevent',
-        'subject'  => $titulo,
-        'startdt'  => $startDt,
-        'enddt'    => $endDt,
-        'body'     => $descricao,
+        'subject'   => $titulo,
+        'startTime' => $startDt,
+        'endTime'   => $endDt,
+        'content'   => $descricao,
     ]);
 
-    return 'https://outlook.office.com/calendar/0/deeplink/compose?' . $params;
+    return 'https://teams.microsoft.com/l/meeting/new?' . $params;
 }
 
 // ============================================================
@@ -63,11 +63,17 @@ function notificarTeams(array $dados): bool {
                 ? date('d/m/Y', strtotime($dados['deadline']))
                 : 'Não definido';
 
-    // Link Outlook Calendar
-    $descCal  = 'Tarefa Brasil DNA 2026\nCategoria: ' . ($dados['categoria'] ?? '') . '\nResponsável: ' . ($dados['responsavel'] ?? '') . '\nPrioridade: ' . ($dados['prioridade'] ?? '') . '\nSistema: ' . ($dados['link_sistema'] ?? '');
-    $calLink  = _outlookCalendarLink('Brasil DNA 2026: ' . $dados['tarefa'], $dados['deadline'] ?? '', $descCal);
+    $descCal = 'Tarefa Brasil DNA 2026 | Categoria: ' . ($dados['categoria'] ?? '')
+             . ' | Responsável: ' . ($dados['responsavel'] ?? '')
+             . ' | Prioridade: ' . ($dados['prioridade'] ?? '')
+             . ' | ' . ($dados['link_sistema'] ?? '');
 
-    // Actions: sempre tem "Ver no Sistema"; adiciona "Agenda" só se tiver deadline
+    $calLink = _teamsCalendarLink(
+        'Brasil DNA 2026: ' . $dados['tarefa'],
+        $dados['deadline'] ?? '',
+        $descCal
+    );
+
     $actions = [[
         "type"  => "Action.OpenUrl",
         "title" => "🔗 Ver no Sistema",
@@ -76,7 +82,7 @@ function notificarTeams(array $dados): bool {
     if (!empty($calLink)) {
         $actions[] = [
             "type"  => "Action.OpenUrl",
-            "title" => "📅 Adicionar à Agenda",
+            "title" => "📅 Adicionar ao Teams Calendar",
             "url"   => $calLink
         ];
     }
@@ -147,9 +153,15 @@ function notificarTeamsChat(array $dados): bool {
                 ? date('d/m/Y', strtotime($dados['deadline']))
                 : 'Não definido';
 
-    // Link Outlook Calendar
-    $descCal = 'Tarefa Brasil DNA 2026\nCategoria: ' . ($dados['categoria'] ?? '') . '\nPrioridade: ' . ($dados['prioridade'] ?? '') . '\nSistema: ' . ($dados['link_sistema'] ?? '');
-    $calLink = _outlookCalendarLink('Brasil DNA 2026: ' . $dados['tarefa'], $dados['deadline'] ?? '', $descCal);
+    $descCal = 'Tarefa Brasil DNA 2026 | Categoria: ' . ($dados['categoria'] ?? '')
+             . ' | Prioridade: ' . ($dados['prioridade'] ?? '')
+             . ' | ' . ($dados['link_sistema'] ?? '');
+
+    $calLink = _teamsCalendarLink(
+        'Brasil DNA 2026: ' . $dados['tarefa'],
+        $dados['deadline'] ?? '',
+        $descCal
+    );
 
     $actions = [[
         "type"  => "Action.OpenUrl",
@@ -159,7 +171,7 @@ function notificarTeamsChat(array $dados): bool {
     if (!empty($calLink)) {
         $actions[] = [
             "type"  => "Action.OpenUrl",
-            "title" => "📅 Adicionar à Agenda",
+            "title" => "📅 Adicionar ao Teams Calendar",
             "url"   => $calLink
         ];
     }
