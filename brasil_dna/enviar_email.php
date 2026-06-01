@@ -11,13 +11,13 @@
  *   define('MAIL_FROM',      'seuemail@gvacompany.com');
  *   define('MAIL_FROM_NAME', 'Brasil DNA 2026 | GVA');
  *
- * Instalar PHPMailer (uma vez no servidor via SSH):
- *   cd /home2/globalvisionacce/insights.gvacompany.com
- *   composer require phpmailer/phpmailer
+ * vendor/ fica em insights.gvacompany.com/vendor/
+ * Este arquivo fica em insights.gvacompany.com/brasil_dna/
+ * Por isso o caminho é __DIR__ . '/../vendor/autoload.php'
  */
 
-// Autoload Composer — carrega apenas se existir (não quebra o sistema se faltar)
-$_composerAutoload = __DIR__ . '/../../vendor/autoload.php';
+// Autoload Composer — 1 nível acima pois vendor/ está na raiz do projeto
+$_composerAutoload = __DIR__ . '/../vendor/autoload.php';
 if (file_exists($_composerAutoload)) {
     require_once $_composerAutoload;
 }
@@ -26,7 +26,7 @@ function enviarEmailTarefa(array $dados): bool {
 
     // Se PHPMailer não estiver disponível, loga e retorna sem quebrar
     if (!class_exists('\\PHPMailer\\PHPMailer\\PHPMailer')) {
-        error_log('enviarEmailTarefa: PHPMailer não encontrado. Rode: composer require phpmailer/phpmailer');
+        error_log('enviarEmailTarefa: PHPMailer não encontrado. Verifique se vendor/ está em insights.gvacompany.com/vendor/');
         return false;
     }
 
@@ -141,7 +141,6 @@ function enviarEmailTarefa(array $dados): bool {
     // ENVIAR VIA PHPMAILER (Office365 / STARTTLS)
     // =========================================================
     try {
-        // Usa nome completo da classe — sem depender do "use" global
         $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
 
         $mail->isSMTP();
