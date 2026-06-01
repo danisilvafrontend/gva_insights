@@ -1,0 +1,69 @@
+/* ===================================================
+   DEMANDAS — estilos complementares ao brasil_dna.css
+   =================================================== */
+
+/* Badge de link externo na tarefa */
+.bdna-task-name a {
+  color: var(--bdna-primary);
+  text-decoration: none;
+  font-size: 11px;
+}
+.bdna-task-name a:hover { text-decoration: underline; }
+
+/* Seção condicional oculta por padrão */
+.demanda-section-condicional {
+  display: none;
+  margin-top: 8px;
+}
+.demanda-section-condicional.ativo {
+  display: block;
+}
+
+/* Indicador de categoria selecionada no form */
+.demanda-cat-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: #f0f7ff;
+  border: 1px solid #bfdbfe;
+  color: var(--bdna-primary);
+  margin-top: 6px;
+  transition: all .2s;
+}
+
+/* Hint de campos condicionais */
+.demanda-hint {
+  font-size: 11px;
+  color: var(--bdna-text-muted);
+  margin-top: 4px;
+  font-style: italic;
+}
+
+/* Barra de progresso no topo do form */
+.demanda-progress {
+  height: 3px;
+  background: #e5e7eb;
+  border-radius: 2px;
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+.demanda-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--bdna-primary), var(--bdna-accent));
+  border-radius: 2px;
+  transition: width .4s ease;
+}
+
+/* Grupos de campos de parceiros (checkboxes) */
+.demanda-parceiros-wrap {
+  background: #f8fafc;
+  border: 1px solid var(--bdna-border);
+  border-radius: var(--bdna-radius-sm);
+  padding: 12px 14px;
+  max-height: 160px;
+  overflow-y: auto;
+}
