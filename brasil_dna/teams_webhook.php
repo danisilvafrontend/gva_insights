@@ -2,23 +2,22 @@
 // teams_webhook.php
 // URLs definidas em includes/config.php (fora do git):
 //
-//   Canal  (todos veem):
-//   define('TEAMS_WEBHOOK_URL',      'https://outlook.office.com/webhook/...');
+//   Canal (toda a equipe vê):
+//   define('TEAMS_WEBHOOK_URL', 'https://outlook.office.com/webhook/...');
 //
-//   Chat privado (mensagem direta ao responsável):
-//   Para cada responsável, crie um fluxo "Enviar alertas de webhook para um chat"
-//   no Teams e salve a URL correspondente no config.php assim:
+//   Chat privado — mapeado por ID do usuário na tabela `usuarios`:
 //   define('TEAMS_CHAT_WEBHOOKS', [
-//       'Gisele'    => 'https://outlook.office.com/webhook/gisele...',
-//       'Anna'      => 'https://outlook.office.com/webhook/anna...',
-//       'Henrique'  => 'https://outlook.office.com/webhook/henrique...',
-//       'Marissol'  => 'https://outlook.office.com/webhook/marissol...',
-//       'Dani Lima' => 'https://outlook.office.com/webhook/danilima...',
-//       'Isabella'  => 'https://outlook.office.com/webhook/isabella...',
+//       1  => 'https://prod-xx...URL fluxo Daniela',   // id=1  Daniela
+//       2  => 'https://prod-xx...URL fluxo Dani Lima', // id=2  Dani Lima
+//       3  => 'https://prod-xx...URL fluxo Gisele',    // id=3  Gisele
+//       4  => 'https://prod-xx...URL fluxo Anna',      // id=4  Anna Cecilia
+//       5  => 'https://prod-xx...URL fluxo Henrique',  // id=5  Henrique Amato
+//       6  => 'https://prod-xx...URL fluxo Marissol',  // id=6  Marissol Magalhães
+//       7  => 'https://prod-xx...URL fluxo Isabella',  // id=7  Isabella Aureliano
 //   ]);
 //
-// OBS: o array usa o campo "nome" do usuário como chave — deve bater exatamente
-//      com o valor retornado da tabela `usuarios`.
+// OBS: use o ID numérico do usuário — assim o nome no banco e no Teams
+//      não precisa ser idêntico. Consulte: SELECT id, nome FROM usuarios;
 
 // ============================================================
 // 1. NOTIFICAÇÃO NO CANAL (visível para toda a equipe)
@@ -96,22 +95,65 @@ function notificarTeams(array $dados): bool {
 
 // ============================================================
 // 2. NOTIFICAÇÃO VIA CHAT PRIVADO (somente o responsável vê)
+//    Mapeado por id_usuario — independente do nome no banco
 // ============================================================
 function notificarTeamsChat(array $dados): bool {
 
-    // Busca a URL do webhook pessoal do responsavel
     if (!defined('TEAMS_CHAT_WEBHOOKS')) return false;
-    $mapa = TEAMS_CHAT_WEBHOOKS;
-    $nomeResp = $dados['responsavel'] ?? '';
 
-    if (empty($mapa[$nomeResp])) return false; // responsavel sem webhook configurado
-    $url = $mapa[$nomeResp];
+    $idUsuario = intval($dados['id_usuario'] ?? 0);
+    if (!$idUsuario) return false;
+
+    $mapa = TEAMS_CHAT_WEBHOOKS;
+    if (empty($mapa[$idUsuario])) return false; // sem webhook configurado para este ID
+
+    $url      = $mapa[$idUsuario];
+    $nomeResp = $dados['responsavel'] ?? 'Responsável';
 
     $prioridadeEmoji = ['Alta' => '🔴', 'Media' => '🟡', 'Baixa' => '🟢'];
     $priEmoji = $prioridadeEmoji[$dados['prioridade']] ?? '⚪';
     $deadline = !empty($dados['deadline'])
                 ? date('d/m/Y', strtotime($dados['deadline']))
                 : 'Não definido';
+
+    $body = [
+        [
+            "type"   => "TextBlock",
+            "size"   => "Large",
+            "weight" => "Bolder",
+            "text"   => "👋 Olá, {$nomeResp}! Você tem uma nova tarefa.",
+            "color"  => "Accent",
+            "wrap"   => true
+        ],
+        [
+            "type"     => "TextBlock",
+            "text"     => "Brasil DNA 2026 — " . ($dados['categoria'] ?? ''),
+            "isSubtle" => true,
+            "spacing"  => "None"
+        ],
+        [
+            "type"    => "FactSet",
+            "spacing" => "Medium",
+            "facts"   => [
+                ["title" => "📋 Tarefa",   "value" => $dados['tarefa']],
+                ["title" => "📅 Mês",      "value" => $dados['mes'] ?? '—'],
+                ["title" => "⏰ Deadline",  "value" => $deadline],
+                ["title" => "{$priEmoji} Prioridade", "value" => $dados['prioridade']],
+                ["title" => "📌 Status",   "value" => $dados['status']],
+            ]
+        ]
+    ];
+
+    // Adiciona observações apenas se preenchidas
+    if (!empty($dados['observacoes'])) {
+        $body[] = [
+            "type"    => "TextBlock",
+            "text"    => "💬 " . $dados['observacoes'],
+            "wrap"    => true,
+            "spacing" => "Medium",
+            "color"   => "Warning"
+        ];
+    }
 
     $payload = [
         "type"        => "message",
@@ -121,40 +163,7 @@ function notificarTeamsChat(array $dados): bool {
                 "\$schema" => "http://adaptivecards.io/schemas/adaptive-card.json",
                 "type"    => "AdaptiveCard",
                 "version" => "1.4",
-                "body"    => [
-                    [
-                        "type"   => "TextBlock",
-                        "size"   => "Large",
-                        "weight" => "Bolder",
-                        "text"   => "👋 Olá, {$nomeResp}! Você tem uma nova tarefa.",
-                        "color"  => "Accent",
-                        "wrap"   => true
-                    ],
-                    [
-                        "type"     => "TextBlock",
-                        "text"     => "Brasil DNA 2026 — " . ($dados['categoria'] ?? ''),
-                        "isSubtle" => true,
-                        "spacing"  => "None"
-                    ],
-                    [
-                        "type"    => "FactSet",
-                        "spacing" => "Medium",
-                        "facts"   => [
-                            ["title" => "📋 Tarefa",   "value" => $dados['tarefa']],
-                            ["title" => "📅 Mês",      "value" => $dados['mes'] ?? '—'],
-                            ["title" => "⏰ Deadline",  "value" => $deadline],
-                            ["title" => "{$priEmoji} Prioridade", "value" => $dados['prioridade']],
-                            ["title" => "📌 Status",   "value" => $dados['status']],
-                        ]
-                    ],
-                    !empty($dados['observacoes']) ? [
-                        "type"    => "TextBlock",
-                        "text"    => "💬 " . $dados['observacoes'],
-                        "wrap"    => true,
-                        "spacing" => "Medium",
-                        "color"   => "Warning"
-                    ] : null
-                ],
+                "body"    => $body,
                 "actions" => [[
                     "type"  => "Action.OpenUrl",
                     "title" => "🔗 Ver no Sistema",
@@ -163,11 +172,6 @@ function notificarTeamsChat(array $dados): bool {
             ]
         ]]
     ];
-
-    // Remove entradas null do body (observacoes vazia)
-    $payload['attachments'][0]['content']['body'] = array_values(
-        array_filter($payload['attachments'][0]['content']['body'])
-    );
 
     return _enviarWebhook($url, $payload);
 }
@@ -185,7 +189,6 @@ function _enviarWebhook(string $url, array $payload): bool {
         CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_TIMEOUT        => 10,
     ]);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
