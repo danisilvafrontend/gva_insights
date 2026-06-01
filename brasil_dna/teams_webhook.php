@@ -12,22 +12,27 @@
 //   ]);
 
 // ============================================================
-// HELPER — gera link para a página agenda.php (intermediária)
-// que oferece botões para Outlook App e Outlook Web
+// HELPER — gera link do Outlook Web para adicionar evento
 // ============================================================
-function _agendaLink(string $titulo, string $deadlineYmd, string $descricao = ''): string {
+function _outlookCalendarLink(string $titulo, string $deadlineYmd, string $descricao = ''): string {
     if (empty($deadlineYmd)) return '';
 
     $dt = DateTime::createFromFormat('Y-m-d', $deadlineYmd);
     if (!$dt) return '';
 
+    $startDt  = $dt->format('Y-m-d') . 'T09:00:00';
+    $endDt    = $dt->format('Y-m-d') . 'T10:00:00';
+
     $params = http_build_query([
-        'subject' => $titulo,
-        'date'    => $dt->format('Y-m-d'),
-        'desc'    => $descricao,
+        'path'     => '/calendar/action/compose',
+        'rru'      => 'addevent',
+        'subject'  => $titulo,
+        'startdt'  => $startDt,
+        'enddt'    => $endDt,
+        'body'     => $descricao,
     ]);
 
-    return 'https://insights.gvacompany.com/brasil_dna/agenda.php?' . $params;
+    return 'https://outlook.office.com/calendar/0/deeplink/compose?' . $params;
 }
 
 // ============================================================
@@ -56,27 +61,19 @@ function notificarTeams(array $dados): bool {
                 ? date('d/m/Y', strtotime($dados['deadline']))
                 : 'Não definido';
 
-    $descCal = 'Tarefa Brasil DNA 2026 | Categoria: ' . ($dados['categoria'] ?? '')
-             . ' | Responsável: ' . ($dados['responsavel'] ?? '')
-             . ' | Prioridade: ' . ($dados['prioridade'] ?? '')
-             . ' | ' . ($dados['link_sistema'] ?? '');
-
-    $agendaLink = _agendaLink(
-        'Brasil DNA 2026: ' . $dados['tarefa'],
-        $dados['deadline'] ?? '',
-        $descCal
-    );
+    $descCal  = 'Tarefa Brasil DNA 2026\nCategoria: ' . ($dados['categoria'] ?? '') . '\nResponsável: ' . ($dados['responsavel'] ?? '') . '\nPrioridade: ' . ($dados['prioridade'] ?? '') . '\nSistema: ' . ($dados['link_sistema'] ?? '');
+    $calLink  = _outlookCalendarLink('Brasil DNA 2026: ' . $dados['tarefa'], $dados['deadline'] ?? '', $descCal);
 
     $actions = [[
         "type"  => "Action.OpenUrl",
         "title" => "🔗 Ver no Sistema",
         "url"   => $dados['link_sistema'] ?? "https://insights.gvacompany.com/brasil_dna/"
     ]];
-    if (!empty($agendaLink)) {
+    if (!empty($calLink)) {
         $actions[] = [
             "type"  => "Action.OpenUrl",
             "title" => "📅 Adicionar à Agenda",
-            "url"   => $agendaLink
+            "url"   => $calLink
         ];
     }
 
@@ -146,26 +143,19 @@ function notificarTeamsChat(array $dados): bool {
                 ? date('d/m/Y', strtotime($dados['deadline']))
                 : 'Não definido';
 
-    $descCal = 'Tarefa Brasil DNA 2026 | Categoria: ' . ($dados['categoria'] ?? '')
-             . ' | Prioridade: ' . ($dados['prioridade'] ?? '')
-             . ' | ' . ($dados['link_sistema'] ?? '');
-
-    $agendaLink = _agendaLink(
-        'Brasil DNA 2026: ' . $dados['tarefa'],
-        $dados['deadline'] ?? '',
-        $descCal
-    );
+    $descCal = 'Tarefa Brasil DNA 2026\nCategoria: ' . ($dados['categoria'] ?? '') . '\nPrioridade: ' . ($dados['prioridade'] ?? '') . '\nSistema: ' . ($dados['link_sistema'] ?? '');
+    $calLink = _outlookCalendarLink('Brasil DNA 2026: ' . $dados['tarefa'], $dados['deadline'] ?? '', $descCal);
 
     $actions = [[
         "type"  => "Action.OpenUrl",
         "title" => "🔗 Ver no Sistema",
         "url"   => $dados['link_sistema'] ?? "https://insights.gvacompany.com/brasil_dna/"
     ]];
-    if (!empty($agendaLink)) {
+    if (!empty($calLink)) {
         $actions[] = [
             "type"  => "Action.OpenUrl",
             "title" => "📅 Adicionar à Agenda",
-            "url"   => $agendaLink
+            "url"   => $calLink
         ];
     }
 
