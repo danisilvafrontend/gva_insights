@@ -1,20 +1,36 @@
 <?php
-session_start();
-if (!isset($_SESSION['usuario_id'])) { header('Location: ../../index.php'); exit; }
-require_once '../../config/db_connect.php';
+require_once '../../includes/auth.php';
+require_login();
+require_once '../../includes/db_connect.php';
 
-$userId   = $_SESSION['usuario_id'];
-$isAdmin  = ($_SESSION['usuario_perfil'] ?? 'user') === 'admin';
-$id       = (int)($_GET['id'] ?? 0);
+$userId = usuario_id();
+$nivel  = usuario_nivel();
+$isAdmin = is_admin();
+$podeGerenciar = can_manage_registros();
+
+$id = (int)($_GET['id'] ?? 0);
 if (!$id) { header('Location: ../index.php'); exit; }
 
-$sqlD = $isAdmin
-    ? "SELECT * FROM demandas WHERE id = $id"
-    : "SELECT * FROM demandas WHERE id = $id AND id_usuario = $userId";
+// Nível 3 só pode editar suas próprias demandas
+if (!$podeGerenciar) {
+    $stmtCheck = $conn->prepare("SELECT id FROM demandas WHERE id = ? AND id_usuario = ?");
+    $stmtCheck->bind_param('ii', $id, $userId);
+    $stmtCheck->execute();
+    $stmtCheck->store_result();
+    if ($stmtCheck->num_rows === 0) {
+        header('Location: ../index.php');
+        exit;
+    }
+    $stmtCheck->close();
+}
 
-$res = $conn->query($sqlD);
+$stmtD = $conn->prepare("SELECT * FROM demandas WHERE id = ?");
+$stmtD->bind_param('i', $id);
+$stmtD->execute();
+$res = $stmtD->get_result();
 if (!$res || $res->num_rows === 0) { header('Location: ../index.php'); exit; }
 $d = $res->fetch_assoc();
+$stmtD->close();
 
 $usuarios = [];
 if ($isAdmin) {
@@ -107,7 +123,7 @@ unset($_SESSION['flash']);
 
                         <div class="col-md-4">
                             <label class="form-label">Deadline</label>
-                            <input type="date" name="deadline" class="form-control" value="<?= $d['deadline'] ?>">
+                            <input type="date" name="deadline" class="form-control" value="<?= htmlspecialchars($d['deadline'] ?? '') ?>">
                         </div>
 
                         <div class="col-md-4">
@@ -154,7 +170,7 @@ unset($_SESSION['flash']);
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Data de Publicação / Envio</label>
-                                <input type="date" name="data_publicacao" class="form-control" value="<?= $d['data_publicacao'] ?? '' ?>">
+                                <input type="date" name="data_publicacao" class="form-control" value="<?= htmlspecialchars($d['data_publicacao'] ?? '') ?>">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Parceiros Envolvidos</label>

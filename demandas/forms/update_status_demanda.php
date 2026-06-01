@@ -1,45 +1,45 @@
 <?php
-session_start();
-if (!isset($_SESSION['usuario_id'])) {
+require_once '../../includes/auth.php';
+
+if (!usuario_logado()) {
     http_response_code(403);
     echo json_encode(['success' => false, 'msg' => 'Não autorizado']);
     exit;
 }
-require_once '../../config/db_connect.php';
+
+require_once '../../includes/db_connect.php';
 mysqli_set_charset($conn, 'utf8mb4');
 
 header('Content-Type: application/json');
 
-$id     = (int)($_POST['id']     ?? 0);
-$status = trim($_POST['status']  ?? '');
+$id     = (int)($_POST['id']    ?? 0);
+$status = trim($_POST['status'] ?? '');
 
 $statusValidos = ['Done','Em andamento','Produzindo','Enviado','Publicado','Aguardando','Pendente','Atrasado'];
 
-if (!$id || !in_array($status, $statusValidos)) {
+if (!$id || !in_array($status, $statusValidos, true)) {
     echo json_encode(['success' => false, 'msg' => 'Dados inválidos']);
     exit;
 }
 
-$userId   = (int)$_SESSION['usuario_id'];
-$isPerfil = $_SESSION['usuario_perfil'] ?? 'user';
-$isAdmin  = ($isPerfil === 'admin');
+$userId        = usuario_id();
+$podeGerenciar = can_manage_registros();
 
-// Usuário comum só pode alterar suas próprias demandas
-$sql = $isAdmin
-    ? "UPDATE demandas SET status = ? WHERE id = ?"
-    : "UPDATE demandas SET status = ? WHERE id = ? AND id_usuario = ?";
-
-$stmt = $conn->prepare($sql);
-if ($isAdmin) {
+// Nível 3 só pode alterar status das suas próprias demandas
+if ($podeGerenciar) {
+    $sql  = "UPDATE demandas SET status = ? WHERE id = ?";
+    $stmt = $conn->prepare($sql);
     $stmt->bind_param('si', $status, $id);
 } else {
+    $sql  = "UPDATE demandas SET status = ? WHERE id = ? AND id_usuario = ?";
+    $stmt = $conn->prepare($sql);
     $stmt->bind_param('sii', $status, $id, $userId);
 }
 
 $ok = $stmt->execute();
 $stmt->close();
 
-// Verifica se ficou atrasado (deadline < hoje e status != Done)
+// Verifica se ficou atrasado
 $atrasado = false;
 $row = $conn->query("SELECT deadline FROM demandas WHERE id = $id")->fetch_assoc();
 if ($row && !empty($row['deadline'])) {

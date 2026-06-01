@@ -1,62 +1,97 @@
 <?php
-session_start();
-if (!isset($_SESSION['usuario_id'])) { header('Location: ../../index.php'); exit; }
-require_once '../../config/db_connect.php';
-
-$userId   = $_SESSION['usuario_id'];
-$isAdmin  = ($_SESSION['usuario_perfil'] ?? 'user') === 'admin';
+require_once '../../includes/auth.php';
+require_login();
+require_once '../../includes/db_connect.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: ../index.php'); exit; }
 
-$id           = (int)$_POST['id'];
-$idUsuario    = (int)$_POST['id_usuario'];
-$categoria    = $conn->real_escape_string(trim($_POST['categoria'] ?? ''));
-$mes          = $conn->real_escape_string(trim($_POST['mes'] ?? ''));
-$acao         = $conn->real_escape_string(trim($_POST['acao'] ?? ''));
-$tarefa       = $conn->real_escape_string(trim($_POST['tarefa'] ?? ''));
-$deadline     = !empty($_POST['deadline']) ? $conn->real_escape_string($_POST['deadline']) : null;
-$parceiros    = $conn->real_escape_string(trim($_POST['parceiros'] ?? ''));
-$detalhes     = $conn->real_escape_string(trim($_POST['detalhes'] ?? ''));
-$tipoConteudo = $conn->real_escape_string(trim($_POST['tipo_conteudo'] ?? ''));
-$linkExterno  = $conn->real_escape_string(trim($_POST['link_externo'] ?? ''));
-$status       = $conn->real_escape_string(trim($_POST['status'] ?? 'Pendente'));
-$prioridade   = $conn->real_escape_string(trim($_POST['prioridade'] ?? 'Média'));
-$dataPublicacao = !empty($_POST['data_publicacao']) ? $conn->real_escape_string($_POST['data_publicacao']) : null;
+$userId        = usuario_id();
+$nivel         = usuario_nivel();
+$isAdmin       = is_admin();
+$podeGerenciar = can_manage_registros();
 
-// Verifica permissão
-$checkSql = $isAdmin ? "SELECT id, status FROM demandas WHERE id = $id" : "SELECT id, status FROM demandas WHERE id = $id AND id_usuario = $userId";
-$checkRes = $conn->query($checkSql);
-if (!$checkRes || $checkRes->num_rows === 0) { header('Location: ../index.php'); exit; }
-$oldData = $checkRes->fetch_assoc();
-$oldStatus = $oldData['status'];
+$id              = (int)($_POST['id'] ?? 0);
+$idUsuario       = (int)($_POST['id_usuario'] ?? $userId);
+$categoria       = trim($_POST['categoria']      ?? '');
+$mes             = trim($_POST['mes']            ?? '');
+$acao            = trim($_POST['acao']           ?? '');
+$tarefa          = trim($_POST['tarefa']         ?? '');
+$deadline        = !empty($_POST['deadline'])  ? $_POST['deadline']        : null;
+$parceiros       = trim($_POST['parceiros']      ?? '');
+$detalhes        = trim($_POST['detalhes']       ?? '');
+$tipoConteudo    = trim($_POST['tipo_conteudo']  ?? '');
+$linkExterno     = trim($_POST['link_externo']   ?? '');
+$status          = trim($_POST['status']         ?? 'Pendente');
+$prioridade      = trim($_POST['prioridade']     ?? 'Média');
+$dataPublicacao  = !empty($_POST['data_publicacao']) ? $_POST['data_publicacao'] : null;
 
-$deadlineVal = $deadline ? "'$deadline'" : 'NULL';
-$dataPublicacaoVal = $dataPublicacao ? "'$dataPublicacao'" : 'NULL';
-
-$sql = "UPDATE demandas SET
-        id_usuario = $idUsuario,
-        categoria = '$categoria',
-        mes = '$mes',
-        acao = '$acao',
-        tarefa = '$tarefa',
-        deadline = $deadlineVal,
-        parceiros = '$parceiros',
-        detalhes = '$detalhes',
-        tipo_conteudo = '$tipoConteudo',
-        link_externo = '$linkExterno',
-        status = '$status',
-        prioridade = '$prioridade',
-        data_publicacao = $dataPublicacaoVal,
-        updated_at = NOW()
-        WHERE id = $id";
-
-if ($conn->query($sql)) {
-    // Histórico se status mudou
-    if ($oldStatus !== $status) {
-        $conn->query("INSERT INTO demandas_historico (id_demanda, id_usuario, status_anterior, status_novo, created_at) VALUES ($id, $userId, '$oldStatus', '$status', NOW())");
+// ── Verifica permissão: nível 3 só pode atualizar suas próprias demandas ─────
+if (!$podeGerenciar) {
+    $stmtCheck = $conn->prepare("SELECT id, status FROM demandas WHERE id = ? AND id_usuario = ?");
+    $stmtCheck->bind_param('ii', $id, $userId);
+    $stmtCheck->execute();
+    $stmtCheck->store_result();
+    if ($stmtCheck->num_rows === 0) {
+        header('Location: ../index.php');
+        exit;
     }
-    $_SESSION['flash'] = ['type'=>'success','msg'=>'✅ Demanda atualizada com sucesso!'];
+    $stmtCheck->close();
+    // Nível 3 não pode alterar o responsável
+    $idUsuario = $userId;
 } else {
-    $_SESSION['flash'] = ['type'=>'danger','msg'=>'Erro ao atualizar: ' . $conn->error];
+    $stmtCheck = $conn->prepare("SELECT id, status FROM demandas WHERE id = ?");
+    $stmtCheck->bind_param('i', $id);
+    $stmtCheck->execute();
+    $stmtCheck->store_result();
+    if ($stmtCheck->num_rows === 0) { header('Location: ../index.php'); exit; }
+    $stmtCheck->close();
 }
-header('Location: ../index.php'); exit;
+
+// Busca status anterior para histórico
+$stmtOld = $conn->prepare("SELECT status FROM demandas WHERE id = ?");
+$stmtOld->bind_param('i', $id);
+$stmtOld->execute();
+$oldData   = $stmtOld->get_result()->fetch_assoc();
+$stmtOld->close();
+$oldStatus = $oldData['status'] ?? '';
+
+// ── UPDATE com prepared statement ────────────────────────────────────────────
+$sql  = "UPDATE demandas SET
+            id_usuario      = ?,
+            categoria       = ?,
+            mes             = ?,
+            acao            = ?,
+            tarefa          = ?,
+            deadline        = ?,
+            parceiros       = ?,
+            detalhes        = ?,
+            tipo_conteudo   = ?,
+            link_externo    = ?,
+            status          = ?,
+            prioridade      = ?,
+            data_publicacao = ?,
+            updated_at      = NOW()
+         WHERE id = ?";
+$stmt = $conn->prepare($sql);
+$stmt->bind_param('issssssssssssi',
+    $idUsuario, $categoria, $mes, $acao, $tarefa,
+    $deadline, $parceiros, $detalhes, $tipoConteudo,
+    $linkExterno, $status, $prioridade, $dataPublicacao, $id
+);
+
+if ($stmt->execute()) {
+    // Registra histórico se status mudou
+    if ($oldStatus !== $status) {
+        $stmtH = $conn->prepare("INSERT INTO demandas_historico (id_demanda, id_usuario, status_anterior, status_novo, created_at) VALUES (?, ?, ?, ?, NOW())");
+        $stmtH->bind_param('iiss', $id, $userId, $oldStatus, $status);
+        $stmtH->execute();
+        $stmtH->close();
+    }
+    $_SESSION['flash'] = ['type' => 'success', 'msg' => '✅ Demanda atualizada com sucesso!'];
+} else {
+    $_SESSION['flash'] = ['type' => 'danger',  'msg' => 'Erro ao atualizar: ' . $conn->error];
+}
+
+$stmt->close();
+header('Location: ../index.php');
+exit;

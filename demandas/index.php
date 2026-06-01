@@ -1,27 +1,26 @@
 <?php
-session_start();
-if (!isset($_SESSION['usuario_id'])) {
-    header('Location: ../index.php');
-    exit;
-}
-require_once '../config/db_connect.php';
+require_once '../includes/auth.php';
+require_login();
+require_once '../includes/db_connect.php';
 
-$userId    = $_SESSION['usuario_id'];
-$userNome  = $_SESSION['usuario_nome'] ?? 'Usuário';
-$userPerfil = $_SESSION['usuario_perfil'] ?? 'user';
-$isAdmin   = ($userPerfil === 'admin');
+$userId          = usuario_id();
+$userNome        = usuario_nome();
+$nivel           = usuario_nivel();
+$isAdmin         = ($nivel === 1);
+$podeGerenciar   = ($nivel <= 2); // níveis 1 e 2 vêem todas as demandas
 
 // Filtros
-$filtroStatus    = $_GET['status']    ?? '';
-$filtroCategoria = $_GET['categoria'] ?? '';
-$filtroMes       = $_GET['mes']       ?? '';
+$filtroStatus      = $_GET['status']      ?? '';
+$filtroCategoria   = $_GET['categoria']   ?? '';
+$filtroMes         = $_GET['mes']         ?? '';
 $filtroResponsavel = $_GET['responsavel'] ?? '';
 
 $where  = [];
 $params = [];
 $types  = '';
 
-if (!$isAdmin) {
+// Nível 3 vê apenas as próprias demandas
+if (!$podeGerenciar) {
     $where[]  = 'd.id_usuario = ?';
     $params[] = $userId;
     $types   .= 'i';
@@ -42,7 +41,7 @@ if ($filtroMes !== '') {
     $params[] = $filtroMes;
     $types   .= 's';
 }
-if ($isAdmin && $filtroResponsavel !== '') {
+if ($podeGerenciar && $filtroResponsavel !== '') {
     $where[]  = 'd.id_usuario = ?';
     $params[] = $filtroResponsavel;
     $types   .= 'i';
@@ -61,22 +60,23 @@ if ($params) {
     $stmt->bind_param($types, ...$params);
 }
 $stmt->execute();
-$result = $stmt->get_result();
+$result   = $stmt->get_result();
 $demandas = $result->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
 // KPIs
-$kpiSql = "SELECT status, COUNT(*) as total FROM demandas " . (!$isAdmin ? "WHERE id_usuario = $userId" : '') . " GROUP BY status";
+$kpiBase   = !$podeGerenciar ? "WHERE id_usuario = $userId" : '';
+$kpiSql    = "SELECT status, COUNT(*) as total FROM demandas $kpiBase GROUP BY status";
 $kpiResult = $conn->query($kpiSql);
-$kpis = ['total' => 0, 'Done' => 0, 'Em andamento' => 0, 'Pendente' => 0, 'Atrasado' => 0];
+$kpis      = ['total' => 0, 'Done' => 0, 'Em andamento' => 0, 'Pendente' => 0, 'Atrasado' => 0];
 while ($k = $kpiResult->fetch_assoc()) {
     $kpis[$k['status']] = (int)$k['total'];
-    $kpis['total'] += (int)$k['total'];
+    $kpis['total']     += (int)$k['total'];
 }
 
-// Busca usuários para filtro admin
+// Lista usuários para filtro (níveis 1 e 2)
 $usuarios = [];
-if ($isAdmin) {
+if ($podeGerenciar) {
     $resU = $conn->query("SELECT id, nome FROM usuarios ORDER BY nome");
     while ($u = $resU->fetch_assoc()) $usuarios[] = $u;
 }
@@ -91,6 +91,9 @@ $categorias = [
     'Roadshow Virtual / Eventos Especiais'
 ];
 $meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+$flash = $_SESSION['flash'] ?? null;
+unset($_SESSION['flash']);
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -111,15 +114,24 @@ $meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto'
         </div>
         <div class="col-md-10 main-content py-4">
 
+            <?php if ($flash): ?>
+            <div class="alert alert-<?= $flash['type'] ?> alert-dismissible fade show">
+                <?= $flash['msg'] ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            <?php endif; ?>
+
             <!-- Título -->
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div>
                     <h4 class="mb-0"><i class="bi bi-kanban me-2 text-primary"></i>Controle de Demandas</h4>
                     <small class="text-muted">Brasil DNA 2026</small>
                 </div>
+                <?php if ($podeGerenciar): ?>
                 <a href="forms/nova_demanda.php" class="btn btn-primary">
                     <i class="bi bi-plus-lg me-1"></i> Nova Demanda
                 </a>
+                <?php endif; ?>
             </div>
 
             <!-- KPIs -->
@@ -190,7 +202,7 @@ $meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto'
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <?php if ($isAdmin): ?>
+                <?php if ($podeGerenciar): ?>
                 <div class="col-md-3">
                     <select name="responsavel" class="form-select form-select-sm">
                         <option value="">Todos os Responsáveis</option>
@@ -230,14 +242,18 @@ $meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto'
                     <?php else: ?>
                     <?php foreach ($demandas as $d): ?>
                         <?php
-                        $hoje = date('Y-m-d');
-                        $atrasado = ($d['deadline'] && $d['deadline'] < $hoje && $d['status'] !== 'Done');
-                        $prioClass = ['Alta' => 'danger', 'Média' => 'warning', 'Baixa' => 'secondary'][$d['prioridade']] ?? 'secondary';
+                        $hoje       = date('Y-m-d');
+                        $atrasado   = ($d['deadline'] && $d['deadline'] < $hoje && $d['status'] !== 'Done');
+                        $prioClass  = ['Alta' => 'danger', 'Média' => 'warning', 'Baixa' => 'secondary'][$d['prioridade']] ?? 'secondary';
                         $statusClass = [
-                            'Done' => 'success', 'Em andamento' => 'primary', 'Produzindo' => 'info',
-                            'Enviado' => 'info', 'Publicado' => 'success', 'Aguardando' => 'warning',
-                            'Pendente' => 'secondary', 'Atrasado' => 'danger'
+                            'Done'         => 'success', 'Em andamento' => 'primary',
+                            'Produzindo'   => 'info',    'Enviado'      => 'info',
+                            'Publicado'    => 'success', 'Aguardando'   => 'warning',
+                            'Pendente'     => 'secondary','Atrasado'    => 'danger'
                         ][$d['status']] ?? 'secondary';
+
+                        // Nível 3 só pode editar suas próprias demandas
+                        $podeEditar = $podeGerenciar || ($nivel === 3 && $d['id_usuario'] == $userId);
                         ?>
                         <tr class="<?= $atrasado ? 'table-danger' : '' ?>">
                             <td><?= $d['id'] ?></td>
@@ -251,15 +267,23 @@ $meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto'
                             <td><?= $d['deadline'] ? date('d/m/Y', strtotime($d['deadline'])) : '—' ?></td>
                             <td><span class="badge bg-<?= $prioClass ?>"><?= $d['prioridade'] ?></span></td>
                             <td>
+                                <?php if ($podeEditar): ?>
                                 <select class="form-select form-select-sm status-select" data-id="<?= $d['id'] ?>" style="min-width:130px">
                                     <?php foreach (['Done','Em andamento','Produzindo','Enviado','Publicado','Aguardando','Pendente','Atrasado'] as $s): ?>
                                     <option value="<?= $s ?>" <?= $d['status'] === $s ? 'selected' : '' ?>><?= $s ?></option>
                                     <?php endforeach; ?>
                                 </select>
+                                <?php else: ?>
+                                <span class="badge bg-<?= $statusClass ?>"><?= $d['status'] ?></span>
+                                <?php endif; ?>
                             </td>
                             <td>
+                                <?php if ($podeEditar): ?>
                                 <a href="forms/editar_demanda.php?id=<?= $d['id'] ?>" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                                <?php endif; ?>
+                                <?php if ($isAdmin): ?>
                                 <a href="forms/deletar_demanda.php?id=<?= $d['id'] ?>" class="btn btn-sm btn-outline-danger" onclick="return confirm('Confirma exclusão?')"><i class="bi bi-trash"></i></a>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -276,7 +300,7 @@ $meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto'
 <script>
 document.querySelectorAll('.status-select').forEach(sel => {
     sel.addEventListener('change', function() {
-        const id = this.dataset.id;
+        const id     = this.dataset.id;
         const status = this.value;
         fetch('forms/update_status_demanda.php', {
             method: 'POST',
@@ -287,7 +311,6 @@ document.querySelectorAll('.status-select').forEach(sel => {
         .then(data => {
             if (data.success) {
                 const row = this.closest('tr');
-                const hoje = new Date().toISOString().split('T')[0];
                 row.classList.toggle('table-danger', data.atrasado);
             }
         });
