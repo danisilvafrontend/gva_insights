@@ -1,23 +1,41 @@
 <?php
 // teams_webhook.php
-// URLs definidas em includes/config.php (fora do git):
+// URLs definidas em includes/db_connect.php (fora do git):
 //
 //   Canal (toda a equipe vê):
-//   define('TEAMS_WEBHOOK_URL', 'https://outlook.office.com/webhook/...');
+//   define('TEAMS_WEBHOOK_URL', 'https://...');
 //
 //   Chat privado — mapeado por ID do usuário na tabela `usuarios`:
 //   define('TEAMS_CHAT_WEBHOOKS', [
-//       1  => 'https://prod-xx...URL fluxo Daniela',   // id=1  Daniela
-//       2  => 'https://prod-xx...URL fluxo Dani Lima', // id=2  Dani Lima
-//       3  => 'https://prod-xx...URL fluxo Gisele',    // id=3  Gisele
-//       4  => 'https://prod-xx...URL fluxo Anna',      // id=4  Anna Cecilia
-//       5  => 'https://prod-xx...URL fluxo Henrique',  // id=5  Henrique Amato
-//       6  => 'https://prod-xx...URL fluxo Marissol',  // id=6  Marissol Magalhães
-//       7  => 'https://prod-xx...URL fluxo Isabella',  // id=7  Isabella Aureliano
+//       1 => 'https://... fluxo Daniela',
+//       4 => 'https://... fluxo Anna',
 //   ]);
-//
-// OBS: use o ID numérico do usuário — assim o nome no banco e no Teams
-//      não precisa ser idêntico. Consulte: SELECT id, nome FROM usuarios;
+
+// ============================================================
+// HELPER — gera link do Outlook Web para adicionar evento
+// ============================================================
+function _outlookCalendarLink(string $titulo, string $deadlineYmd, string $descricao = ''): string {
+    // deadlineYmd = 'YYYY-MM-DD' ou vazio
+    if (empty($deadlineYmd)) return '';
+
+    $dt = DateTime::createFromFormat('Y-m-d', $deadlineYmd);
+    if (!$dt) return '';
+
+    // Outlook Web deep-link: evento de dia inteiro
+    $startDt  = $dt->format('Y-m-d') . 'T09:00:00';   // 09h
+    $endDt    = $dt->format('Y-m-d') . 'T10:00:00';   // 10h
+
+    $params = http_build_query([
+        'path'     => '/calendar/action/compose',
+        'rru'      => 'addevent',
+        'subject'  => $titulo,
+        'startdt'  => $startDt,
+        'enddt'    => $endDt,
+        'body'     => $descricao,
+    ]);
+
+    return 'https://outlook.office.com/calendar/0/deeplink/compose?' . $params;
+}
 
 // ============================================================
 // 1. NOTIFICAÇÃO NO CANAL (visível para toda a equipe)
@@ -29,7 +47,7 @@ function notificarTeams(array $dados): bool {
     $emojis = [
         'Gestão & Planejamento' => '📊',
         'Videos Promo'          => '🎬',
-        'Webinars'              => '🎙️',
+        'Webinars'              => '🎤',
         'News & Releases'       => '📰',
         'Posts SoMe'            => '📱',
         'Roadshow Presencial'   => '🗺️',
@@ -44,6 +62,24 @@ function notificarTeams(array $dados): bool {
     $deadline = !empty($dados['deadline'])
                 ? date('d/m/Y', strtotime($dados['deadline']))
                 : 'Não definido';
+
+    // Link Outlook Calendar
+    $descCal  = 'Tarefa Brasil DNA 2026\nCategoria: ' . ($dados['categoria'] ?? '') . '\nResponsável: ' . ($dados['responsavel'] ?? '') . '\nPrioridade: ' . ($dados['prioridade'] ?? '') . '\nSistema: ' . ($dados['link_sistema'] ?? '');
+    $calLink  = _outlookCalendarLink('Brasil DNA 2026: ' . $dados['tarefa'], $dados['deadline'] ?? '', $descCal);
+
+    // Actions: sempre tem "Ver no Sistema"; adiciona "Agenda" só se tiver deadline
+    $actions = [[
+        "type"  => "Action.OpenUrl",
+        "title" => "🔗 Ver no Sistema",
+        "url"   => $dados['link_sistema'] ?? "https://insights.gvacompany.com/brasil_dna/"
+    ]];
+    if (!empty($calLink)) {
+        $actions[] = [
+            "type"  => "Action.OpenUrl",
+            "title" => "📅 Adicionar à Agenda",
+            "url"   => $calLink
+        ];
+    }
 
     $payload = [
         "type"        => "message",
@@ -81,11 +117,7 @@ function notificarTeams(array $dados): bool {
                         ]
                     ]
                 ],
-                "actions" => [[
-                    "type"  => "Action.OpenUrl",
-                    "title" => "🔗 Ver no Sistema",
-                    "url"   => $dados['link_sistema'] ?? "https://insights.gvacompany.com/brasil_dna/"
-                ]]
+                "actions" => $actions
             ]
         ]]
     ];
@@ -95,7 +127,6 @@ function notificarTeams(array $dados): bool {
 
 // ============================================================
 // 2. NOTIFICAÇÃO VIA CHAT PRIVADO (somente o responsável vê)
-//    Mapeado por id_usuario — independente do nome no banco
 // ============================================================
 function notificarTeamsChat(array $dados): bool {
 
@@ -105,7 +136,7 @@ function notificarTeamsChat(array $dados): bool {
     if (!$idUsuario) return false;
 
     $mapa = TEAMS_CHAT_WEBHOOKS;
-    if (empty($mapa[$idUsuario])) return false; // sem webhook configurado para este ID
+    if (empty($mapa[$idUsuario])) return false;
 
     $url      = $mapa[$idUsuario];
     $nomeResp = $dados['responsavel'] ?? 'Responsável';
@@ -115,6 +146,23 @@ function notificarTeamsChat(array $dados): bool {
     $deadline = !empty($dados['deadline'])
                 ? date('d/m/Y', strtotime($dados['deadline']))
                 : 'Não definido';
+
+    // Link Outlook Calendar
+    $descCal = 'Tarefa Brasil DNA 2026\nCategoria: ' . ($dados['categoria'] ?? '') . '\nPrioridade: ' . ($dados['prioridade'] ?? '') . '\nSistema: ' . ($dados['link_sistema'] ?? '');
+    $calLink = _outlookCalendarLink('Brasil DNA 2026: ' . $dados['tarefa'], $dados['deadline'] ?? '', $descCal);
+
+    $actions = [[
+        "type"  => "Action.OpenUrl",
+        "title" => "🔗 Ver no Sistema",
+        "url"   => $dados['link_sistema'] ?? "https://insights.gvacompany.com/brasil_dna/"
+    ]];
+    if (!empty($calLink)) {
+        $actions[] = [
+            "type"  => "Action.OpenUrl",
+            "title" => "📅 Adicionar à Agenda",
+            "url"   => $calLink
+        ];
+    }
 
     $body = [
         [
@@ -144,7 +192,6 @@ function notificarTeamsChat(array $dados): bool {
         ]
     ];
 
-    // Adiciona observações apenas se preenchidas
     if (!empty($dados['observacoes'])) {
         $body[] = [
             "type"    => "TextBlock",
@@ -164,11 +211,7 @@ function notificarTeamsChat(array $dados): bool {
                 "type"    => "AdaptiveCard",
                 "version" => "1.4",
                 "body"    => $body,
-                "actions" => [[
-                    "type"  => "Action.OpenUrl",
-                    "title" => "🔗 Ver no Sistema",
-                    "url"   => $dados['link_sistema'] ?? "https://insights.gvacompany.com/brasil_dna/"
-                ]]
+                "actions" => $actions
             ]
         ]]
     ];
