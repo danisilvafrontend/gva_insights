@@ -5,17 +5,15 @@ require_once '../../includes/db_connect.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: ../index.php'); exit; }
 
-$userId        = usuario_id();
-$isAdmin       = is_admin();
-$podeGerenciar = can_manage_registros();
+$userId  = usuario_id();
+$isAdmin = is_admin();
 
 $id             = (int)($_POST['id'] ?? 0);
-$idUsuario      = (int)($_POST['id_usuario'] ?? $userId);
 $categoria      = trim($_POST['categoria']      ?? '');
 $mes            = trim($_POST['mes']            ?? '');
 $acao           = trim($_POST['acao']           ?? '');
 $tarefa         = trim($_POST['tarefa']         ?? '');
-$deadline       = !empty($_POST['deadline'])           ? $_POST['deadline']           : null;
+$deadline       = !empty($_POST['deadline'])           ? $_POST['deadline']       : null;
 $detalhes       = trim($_POST['detalhes']       ?? '');
 $tipoConteudo   = trim($_POST['tipo_conteudo']  ?? '');
 $linkExterno    = trim($_POST['link_externo']   ?? '');
@@ -26,25 +24,71 @@ $dataPublicacao = !empty($_POST['data_publicacao']) ? $_POST['data_publicacao'] 
 $empresas_envolvidas = array_map('intval', $_POST['empresas_envolvidas'] ?? []);
 $clientes_envolvidos = array_map('intval', $_POST['clientes_envolvidos'] ?? []);
 
-// ── Verifica permissão ────────────────────────────────────────────────
-if (!$podeGerenciar) {
-    $stmtCheck = $conn->prepare("SELECT id FROM demandas WHERE id = ? AND id_usuario = ?");
-    $stmtCheck->bind_param('ii', $id, $userId);
-    $stmtCheck->execute();
-    $stmtCheck->store_result();
-    if ($stmtCheck->num_rows === 0) { header('Location: ../index.php'); exit; }
-    $stmtCheck->close();
-    $idUsuario = $userId;
-} else {
-    $stmtCheck = $conn->prepare("SELECT id FROM demandas WHERE id = ?");
-    $stmtCheck->bind_param('i', $id);
-    $stmtCheck->execute();
-    $stmtCheck->store_result();
-    if ($stmtCheck->num_rows === 0) { header('Location: ../index.php'); exit; }
-    $stmtCheck->close();
+if (!$id) { header('Location: ../index.php'); exit; }
+
+// ── Busca demanda e valida permissão via auth.php ───────────────────
+$stmtD = $conn->prepare("SELECT id_usuario FROM demandas WHERE id = ?");
+$stmtD->bind_param('i', $id);
+$stmtD->execute();
+$rowD = $stmtD->get_result()->fetch_assoc();
+$stmtD->close();
+
+if (!$rowD) { header('Location: ../index.php'); exit; }
+
+// pode_editar_tarefa(): Nível 1 e 2 = true sempre; Nível 3 = true só se for o responsável
+if (!pode_editar_tarefa((int)$rowD['id_usuario'])) {
+    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Você não tem permissão para editar esta demanda.'];
+    header('Location: ../index.php');
+    exit;
 }
 
-// Busca status anterior para histórico
+// id_usuario: admin pode trocar responsável; outros mantêm o original
+$idUsuario = $isAdmin ? (int)($_POST['id_usuario'] ?? $rowD['id_usuario']) : (int)$rowD['id_usuario'];
+
+// ── Validação de categoria ─────────────────────────────────────────
+$categoriasValidas = [
+    'Gestão & Planejamento › Cronograma',
+    'Gestão & Planejamento › Locais',
+    'Gestão & Planejamento › Metas (clientes, marcas, números de pessoas)',
+    'Gestão & Planejamento › Parcerias',
+    'Gestão & Planejamento › Controle e Follow Up',
+    'Comunicação › Videos Promo',
+    'Comunicação › Webinars',
+    'Comunicação › Releases Brasil',
+    'Comunicação › Releases EUA',
+    'Comunicação › Newsletter',
+    'Comunicação › Posts SoMe',
+    'Comunicação › Plataforma',
+    'Documentação › Contratos',
+    'Documentação › Invoice',
+    'Documentação › Acordos',
+    'Documentação › Clientes',
+    'Documentação › Parceiros',
+    'Documentação › Fornecedores',
+    'Organização e Execução › Roadshow Presencial',
+    'Organização e Execução › Roadshow Virtual',
+    'Organização e Execução › Eventos Especiais',
+    'Organização e Execução › Agenda B2B',
+    'Organização e Execução › Travel Arrangements',
+    'Organização e Execução › Promoção e RSVP',
+    'Relatórios › Template de Relatórios',
+    'Relatórios › Atualização de Dados',
+    'Relatórios › Entrega de Relatórios',
+];
+
+if (empty($tarefa)) {
+    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Tarefa não pode ser vazia.'];
+    header('Location: editar_demanda.php?id=' . $id);
+    exit;
+}
+
+if (!empty($categoria) && !in_array($categoria, $categoriasValidas)) {
+    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Categoria inválida.'];
+    header('Location: editar_demanda.php?id=' . $id);
+    exit;
+}
+
+// ── Busca status anterior para histórico ─────────────────────────────
 $stmtOld = $conn->prepare("SELECT status FROM demandas WHERE id = ?");
 $stmtOld->bind_param('i', $id);
 $stmtOld->execute();
@@ -53,10 +97,6 @@ $stmtOld->close();
 $oldStatus = $oldData['status'] ?? '';
 
 // ── UPDATE principal ──────────────────────────────────────────────────
-// Campos: id_usuario(i), categoria(s), mes(s), acao(s), tarefa(s),
-//         deadline(s), detalhes(s), tipo_conteudo(s), link_externo(s),
-//         status(s), prioridade(s), data_publicacao(s), id(i)
-// Total: 13 parâmetros → tipos: 'isssssssssssi'
 $sql = "UPDATE demandas SET
             id_usuario      = ?,
             categoria       = ?,
@@ -75,19 +115,9 @@ $sql = "UPDATE demandas SET
 
 $stmt = $conn->prepare($sql);
 $stmt->bind_param('isssssssssssi',
-    $idUsuario,     // i
-    $categoria,     // s
-    $mes,           // s
-    $acao,          // s
-    $tarefa,        // s
-    $deadline,      // s (DATE ou NULL)
-    $detalhes,      // s
-    $tipoConteudo,  // s
-    $linkExterno,   // s
-    $status,        // s
-    $prioridade,    // s
-    $dataPublicacao,// s (DATE ou NULL)
-    $id             // i
+    $idUsuario, $categoria, $mes, $acao, $tarefa,
+    $deadline, $detalhes, $tipoConteudo, $linkExterno,
+    $status, $prioridade, $dataPublicacao, $id
 );
 
 if ($stmt->execute()) {

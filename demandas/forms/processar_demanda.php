@@ -1,7 +1,12 @@
 <?php
 require_once '../../includes/auth.php';
 require_login();
-can_manage_registros() || (http_response_code(403) && exit('Acesso negado.'));
+// Nível 1 (admin) e Nível 2 (operacional) podem criar demandas
+// Nível 3 não tem acesso a este fluxo
+if (!can_manage_registros()) {
+    http_response_code(403);
+    exit('Acesso negado.');
+}
 
 require_once '../../includes/db_connect.php';
 require_once '../teams_webhook.php';
@@ -12,10 +17,11 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-$isAdmin  = is_admin();
-$userId   = usuario_id();
+$isAdmin = is_admin();
+$userId  = usuario_id();
 
-// ── Captura e saneamento ──────────────────────────────────────
+// ── Captura e saneamento ──────────────────────────────────────────────
+// Admin pode escolher qualquer responsável; Nível 2 usa sempre o próprio id
 $id_usuario    = $isAdmin ? (int)($_POST['id_usuario'] ?? 0) : $userId;
 $categoria     = trim($_POST['categoria']     ?? '');
 $mes           = trim($_POST['mes']           ?? '');
@@ -31,27 +37,58 @@ $detalhes      = trim($_POST['detalhes']      ?? '');
 $empresas_envolvidas = array_map('intval', $_POST['empresas_envolvidas'] ?? []);
 $clientes_envolvidos = array_map('intval', $_POST['clientes_envolvidos'] ?? []);
 
-// ── Normaliza deadline — string vazia ou inválida vira NULL ───────────
+// ── Normaliza deadline — string vazia ou inválida vira NULL ──────────
 $deadlineRaw = trim($_POST['deadline'] ?? '');
-$deadline    = null; // default NULL — campo DATE aceita NULL, não aceita ''
+$deadline    = null;
 if (!empty($deadlineRaw)) {
     $dt = DateTime::createFromFormat('d/m/Y', $deadlineRaw)
        ?: DateTime::createFromFormat('Y-m-d', $deadlineRaw);
     $deadline = $dt ? $dt->format('Y-m-d') : null;
 }
 
-// ── Validações básicas ────────────────────────────────────
+// ── Validações básicas ──────────────────────────────────────────────
+$categoriasValidas = [
+    'Gestão & Planejamento › Cronograma',
+    'Gestão & Planejamento › Locais',
+    'Gestão & Planejamento › Metas (clientes, marcas, números de pessoas)',
+    'Gestão & Planejamento › Parcerias',
+    'Gestão & Planejamento › Controle e Follow Up',
+    'Comunicação › Videos Promo',
+    'Comunicação › Webinars',
+    'Comunicação › Releases Brasil',
+    'Comunicação › Releases EUA',
+    'Comunicação › Newsletter',
+    'Comunicação › Posts SoMe',
+    'Comunicação › Plataforma',
+    'Documentação › Contratos',
+    'Documentação › Invoice',
+    'Documentação › Acordos',
+    'Documentação › Clientes',
+    'Documentação › Parceiros',
+    'Documentação › Fornecedores',
+    'Organização e Execução › Roadshow Presencial',
+    'Organização e Execução › Roadshow Virtual',
+    'Organização e Execução › Eventos Especiais',
+    'Organização e Execução › Agenda B2B',
+    'Organização e Execução › Travel Arrangements',
+    'Organização e Execução › Promoção e RSVP',
+    'Relatórios › Template de Relatórios',
+    'Relatórios › Atualização de Dados',
+    'Relatórios › Entrega de Relatórios',
+];
+
 $erros = [];
-if ($id_usuario <= 0)  $erros[] = 'Responsável não identificado.';
-if (empty($categoria)) $erros[] = 'Categoria é obrigatória.';
-if (empty($tarefa))    $erros[] = 'Tarefa / Demanda é obrigatória.';
+if ($id_usuario <= 0)                          $erros[] = 'Responsável não identificado.';
+if (empty($categoria))                         $erros[] = 'Categoria é obrigatória.';
+if (!in_array($categoria, $categoriasValidas)) $erros[] = 'Categoria inválida.';
+if (empty($tarefa))                            $erros[] = 'Tarefa / Demanda é obrigatória.';
 
 if ($erros) {
     header('Location: nova_demanda.php?erro=' . urlencode(implode(' | ', $erros)));
     exit;
 }
 
-// ── INSERT principal (tabela demandas) ───────────────────────────
+// ── INSERT principal (tabela demandas) ────────────────────────────────
 $sql  = "INSERT INTO demandas
          (id_usuario, categoria, mes, acao, tarefa, tipo_conteudo,
           deadline, prioridade, status, link_externo, detalhes)
@@ -71,9 +108,9 @@ if (!$stmt->execute()) {
 $novoId = $conn->insert_id;
 $stmt->close();
 
-// ── Salva empresas envolvidas ─────────────────────────────────
+// ── Salva empresas envolvidas ─────────────────────────────────────────
 if (!empty($empresas_envolvidas)) {
-    $stmtEmp = $conn->prepare("INSERT IGNORE INTO demandas_empresas (iddemanda, idempresa) VALUES (?, ?)");
+    $stmtEmp = $conn->prepare("INSERT IGNORE INTO demandas_empresas (id_demanda, id_empresa) VALUES (?, ?)");
     foreach ($empresas_envolvidas as $idEmpresa) {
         if ($idEmpresa > 0) {
             $stmtEmp->bind_param('ii', $novoId, $idEmpresa);
@@ -83,9 +120,9 @@ if (!empty($empresas_envolvidas)) {
     $stmtEmp->close();
 }
 
-// ── Salva clientes envolvidos ────────────────────────────────
+// ── Salva clientes envolvidos ──────────────────────────────────────────
 if (!empty($clientes_envolvidos)) {
-    $stmtCli = $conn->prepare("INSERT IGNORE INTO demandas_clientes (iddemanda, idcliente) VALUES (?, ?)");
+    $stmtCli = $conn->prepare("INSERT IGNORE INTO demandas_clientes (id_demanda, id_cliente) VALUES (?, ?)");
     foreach ($clientes_envolvidos as $idCliente) {
         if ($idCliente > 0) {
             $stmtCli->bind_param('ii', $novoId, $idCliente);
@@ -95,7 +132,7 @@ if (!empty($clientes_envolvidos)) {
     $stmtCli->close();
 }
 
-// ── Busca nome do responsável + nomes de empresas e clientes para o webhook ──
+// ── Busca nome do responsável + empresas/clientes para o webhook ───────
 $stmtU = $conn->prepare("SELECT nome FROM usuarios WHERE id = ?");
 $stmtU->bind_param('i', $id_usuario);
 $stmtU->execute();
@@ -107,27 +144,27 @@ $nomesEmpresas = '';
 if (!empty($empresas_envolvidas)) {
     $placeholders = implode(',', array_fill(0, count($empresas_envolvidas), '?'));
     $types        = str_repeat('i', count($empresas_envolvidas));
-    $stmtE2       = $conn->prepare("SELECT nome FROM empresas WHERE id IN ($placeholders)");
+    $stmtE2       = $conn->prepare("SELECT empresa FROM empresas WHERE id IN ($placeholders)");
     $stmtE2->bind_param($types, ...$empresas_envolvidas);
     $stmtE2->execute();
     $rowsE         = $stmtE2->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmtE2->close();
-    $nomesEmpresas = implode(', ', array_column($rowsE, 'nome'));
+    $nomesEmpresas = implode(', ', array_column($rowsE, 'empresa'));
 }
 
 $nomesClientes = '';
 if (!empty($clientes_envolvidos)) {
     $placeholders = implode(',', array_fill(0, count($clientes_envolvidos), '?'));
     $types        = str_repeat('i', count($clientes_envolvidos));
-    $stmtC2       = $conn->prepare("SELECT nome FROM clientes WHERE id IN ($placeholders)");
+    $stmtC2       = $conn->prepare("SELECT company FROM clientes WHERE id IN ($placeholders)");
     $stmtC2->bind_param($types, ...$clientes_envolvidos);
     $stmtC2->execute();
     $rowsC         = $stmtC2->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmtC2->close();
-    $nomesClientes = implode(', ', array_column($rowsC, 'nome'));
+    $nomesClientes = implode(', ', array_column($rowsC, 'company'));
 }
 
-// ── Notificação Teams ──────────────────────────────────────────
+// ── Notificação Teams ────────────────────────────────────────────────
 $dadosTeams = [
     'id_usuario'   => $id_usuario,
     'responsavel'  => $nomeResponsavel,
