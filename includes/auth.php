@@ -4,15 +4,14 @@
  * Controle de autenticação e autorização — GVA Insights
  *
  * Níveis de acesso (coluna nivel_acesso na tabela usuarios):
- *   1 → Admin total  : acesso a tudo na aplicação (Daniela - id 1)
- *   2 → Operacional  : cria/edita qualquer tarefa e subtarefa
- *   3 → Restrito     : visualiza e edita apenas tarefas destinadas a si
+ *   1 → Admin       : acesso total a tudo na aplicação
+ *   2 → Operacional : visualiza index e tarefas, edita apenas as próprias
  *
  * Uso básico:
  *   require_once '../includes/auth.php';
- *   require_login();               // redireciona se não logado
- *   require_nivel(2);              // bloqueia nível 3
- *   pode_editar_tarefa($id_resp);  // true/false por nível
+ *   require_login();                     // redireciona se não logado
+ *   require_admin();                     // bloqueia não-admin
+ *   pode_editar_tarefa($id_responsavel); // true/false por nível
  */
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -25,7 +24,6 @@ if (session_status() === PHP_SESSION_NONE) {
 
 /**
  * Redireciona para o login se o usuário não estiver autenticado.
- * Ajuste o caminho de acordo com a profundidade do arquivo que inclui este.
  */
 function require_login(string $caminho_login = '../index.php'): void
 {
@@ -54,18 +52,20 @@ function usuario_id(): int
 /** Nome do usuário logado. */
 function usuario_nome(): string
 {
-    return $_SESSION['user_nome']   // chave preferencial
-        ?? $_SESSION['nome']        // fallback legado
+    return $_SESSION['user_nome']
+        ?? $_SESSION['nome']
         ?? 'Usuário';
 }
 
 /**
  * Nível de acesso do usuário logado.
- * Retorna 3 (mais restrito) como padrão seguro se não estiver na sessão.
+ * Retorna 2 (operacional / mais restrito) como padrão seguro.
+ *   1 = Admin
+ *   2 = Operacional
  */
 function usuario_nivel(): int
 {
-    return (int)($_SESSION['nivel_acesso'] ?? 3);
+    return (int)($_SESSION['nivel_acesso'] ?? 2);
 }
 
 // ---------------------------------------------------------------------------
@@ -79,19 +79,22 @@ function is_admin(): bool
 }
 
 /**
- * Níveis 1 e 2: pode criar, editar e deletar qualquer tarefa/subtarefa.
- * Nível 3 não passa nesta verificação.
+ * Alias mantido por compatibilidade com arquivos existentes.
+ * Admin e Operacional podem criar registros — a diferença está em
+ * QUAIS registros cada um pode editar/deletar.
  */
 function can_manage_registros(): bool
 {
-    return in_array(usuario_nivel(), [1, 2], true);
+    return usuario_logado();
 }
 
 /**
  * Verifica se o usuário logado pode editar determinada tarefa.
  *
- * @param int $id_usuario_responsavel  ID do responsável pela tarefa
- * @return bool
+ * Admin (1)       → edita qualquer tarefa.
+ * Operacional (2) → edita apenas tarefas onde ele é o responsável.
+ *
+ * @param int $id_usuario_responsavel  ID do usuário responsável pela tarefa
  */
 function pode_editar_tarefa(int $id_usuario_responsavel): bool
 {
@@ -99,27 +102,34 @@ function pode_editar_tarefa(int $id_usuario_responsavel): bool
         return false;
     }
 
-    $nivel = usuario_nivel();
-
-    // Níveis 1 e 2 editam qualquer tarefa
-    if ($nivel === 1 || $nivel === 2) {
+    // Admin edita tudo
+    if (is_admin()) {
         return true;
     }
 
-    // Nível 3: apenas tarefas atribuídas ao próprio usuário
+    // Operacional: apenas as próprias tarefas
     return usuario_id() === $id_usuario_responsavel;
 }
 
 /**
- * Bloqueia o acesso caso o usuário não tenha o nível mínimo exigido.
- * Menor número = maior privilégio (1 > 2 > 3).
+ * Bloqueia o acesso caso o usuário não seja admin.
+ * Use nas páginas exclusivas de administração.
+ */
+function require_admin(string $caminho_login = '../index.php'): void
+{
+    require_login($caminho_login);
+
+    if (!is_admin()) {
+        http_response_code(403);
+        exit('Acesso negado. Esta área é restrita a administradores.');
+    }
+}
+
+/**
+ * Bloqueia se o usuário não tiver o nível mínimo exigido.
+ * Mantido por compatibilidade — prefira require_admin() quando possível.
  *
- * Exemplos:
- *   require_nivel(1)  → somente admin
- *   require_nivel(2)  → níveis 1 e 2
- *
- * @param int    $nivel_minimo     Nível máximo permitido (1=mais restrito ao admin)
- * @param string $caminho_login    Para onde redirecionar usuários não logados
+ * Exemplo: require_nivel(1) → somente admin
  */
 function require_nivel(int $nivel_minimo, string $caminho_login = '../index.php'): void
 {
@@ -132,15 +142,15 @@ function require_nivel(int $nivel_minimo, string $caminho_login = '../index.php'
 }
 
 // ---------------------------------------------------------------------------
-// Utilitário para popular a sessão após login
+// Utilitário — popular sessão após login
 // ---------------------------------------------------------------------------
 /**
- * Exemplo de uso no processo de login (login.php / processar_login.php):
+ * No processo de login (processar_login.php), grave na sessão:
  *
  *   $_SESSION['user_id']      = (int)$usuario['id'];
  *   $_SESSION['user_nome']    = $usuario['nome'];
- *   $_SESSION['nivel_acesso'] = (int)$usuario['nivel_acesso'];
+ *   $_SESSION['nivel_acesso'] = (int)$usuario['nivel_acesso'];  // 1 ou 2
  *
- * Lembre de buscar o campo nivel_acesso no SELECT do login:
+ * SELECT necessário no login:
  *   SELECT id, nome, senha, nivel_acesso FROM usuarios WHERE email = ? AND ativo = 1
  */
