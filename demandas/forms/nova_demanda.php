@@ -15,6 +15,15 @@ if ($isAdmin) {
     while ($u = $resU->fetch_assoc()) $usuarios[] = $u;
 }
 
+// Empresas e Clientes para os chips
+$empresas = [];
+$resEmp = $conn->query("SELECT id, empresa FROM empresas ORDER BY empresa ASC");
+while ($e = $resEmp->fetch_assoc()) $empresas[] = $e;
+
+$clientes = [];
+$resCli = $conn->query("SELECT id, company FROM clientes ORDER BY company ASC");
+while ($c = $resCli->fetch_assoc()) $clientes[] = $c;
+
 $categorias = [
     'Gestão & Planejamento',
     'Videos Promo',
@@ -35,10 +44,70 @@ $statusOpcoes = ['Pendente','Em andamento','Produzindo','Enviado','Publicado','A
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Nova Demanda — Brasil DNA 2026</title>
+    <title>Nova Demanda</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="stylesheet" href="../assets/demandas.css">
+    <style>
+        /* ── Chips de seleção múltipla ── */
+        .chip-select-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 6px 0;
+        }
+        .chip-select-group input[type="checkbox"] {
+            display: none;
+        }
+        .chip-select-group label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 14px;
+            border: 1px solid #ccc;
+            border-radius: 999px;
+            font-size: 0.83rem;
+            cursor: pointer;
+            background: #fff;
+            color: #555;
+            transition: all 0.15s ease;
+            user-select: none;
+            line-height: 1.4;
+        }
+        .chip-select-group label::before {
+            content: '';
+            display: inline-block;
+            width: 13px;
+            height: 13px;
+            border: 1.5px solid #aaa;
+            border-radius: 3px;
+            background: #fff;
+            flex-shrink: 0;
+            transition: all 0.15s ease;
+        }
+        .chip-select-group input[type="checkbox"]:checked + label {
+            background: #e8f0fe;
+            border-color: #0d6efd;
+            color: #0d6efd;
+            font-weight: 500;
+        }
+        .chip-select-group input[type="checkbox"]:checked + label::before {
+            background: #0d6efd;
+            border-color: #0d6efd;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 12 10' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 5l3.5 3.5L11 1' stroke='white' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: 9px;
+        }
+        .chip-label-section {
+            font-size: 0.78rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            color: #6c757d;
+            margin-bottom: 2px;
+        }
+    </style>
 </head>
 <body>
 <?php include '../../pages/header.php'; ?>
@@ -52,7 +121,7 @@ $statusOpcoes = ['Pendente','Em andamento','Produzindo','Enviado','Publicado','A
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div>
                     <h4 class="mb-0"><i class="bi bi-plus-circle me-2 text-primary"></i>Nova Demanda</h4>
-                    <small class="text-muted">Brasil DNA 2026</small>
+                    <small class="text-muted">Cadastro de nova demanda / tarefa</small>
                 </div>
                 <a href="../index.php" class="btn btn-outline-secondary btn-sm">
                     <i class="bi bi-arrow-left me-1"></i> Voltar
@@ -75,7 +144,7 @@ $statusOpcoes = ['Pendente','Em andamento','Produzindo','Enviado','Publicado','A
 
                         <div class="row g-3">
 
-                            <!-- Responsável (nível 1 vê select, demais vêem nome fixo) -->
+                            <!-- Responsável -->
                             <?php if ($isAdmin): ?>
                             <div class="col-md-4">
                                 <label class="form-label fw-semibold">Responsável <span class="text-danger">*</span></label>
@@ -161,10 +230,38 @@ $statusOpcoes = ['Pendente','Em andamento','Produzindo','Enviado','Publicado','A
                                 </select>
                             </div>
 
-                            <!-- Parceiros -->
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold">Parceiros / Entidades Envolvidas</label>
-                                <input type="text" name="parceiros" class="form-control" placeholder="Ex: Sebrae, Senai, Governo do Estado...">
+                            <!-- ── EMPRESAS ENVOLVIDAS ── -->
+                            <div class="col-md-12">
+                                <div class="chip-label-section mb-1"><i class="bi bi-building me-1"></i>Empresas Envolvidas</div>
+                                <div class="chip-select-group">
+                                    <?php foreach ($empresas as $emp): ?>
+                                        <input type="checkbox"
+                                               name="empresas_envolvidas[]"
+                                               id="emp_<?= $emp['id'] ?>"
+                                               value="<?= $emp['id'] ?>">
+                                        <label for="emp_<?= $emp['id'] ?>"><?= htmlspecialchars($emp['empresa']) ?></label>
+                                    <?php endforeach; ?>
+                                    <?php if (empty($empresas)): ?>
+                                        <span class="text-muted small">Nenhuma empresa cadastrada.</span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+
+                            <!-- ── CLIENTES ENVOLVIDOS ── -->
+                            <div class="col-md-12">
+                                <div class="chip-label-section mb-1"><i class="bi bi-person-badge me-1"></i>Clientes Envolvidos</div>
+                                <div class="chip-select-group">
+                                    <?php foreach ($clientes as $cli): ?>
+                                        <input type="checkbox"
+                                               name="clientes_envolvidos[]"
+                                               id="cli_<?= $cli['id'] ?>"
+                                               value="<?= $cli['id'] ?>">
+                                        <label for="cli_<?= $cli['id'] ?>"><?= htmlspecialchars($cli['company']) ?></label>
+                                    <?php endforeach; ?>
+                                    <?php if (empty($clientes)): ?>
+                                        <span class="text-muted small">Nenhum cliente cadastrado.</span>
+                                    <?php endif; ?>
+                                </div>
                             </div>
 
                             <!-- Link externo (dinâmico) -->
