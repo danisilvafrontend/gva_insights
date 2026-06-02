@@ -3,25 +3,13 @@ require_once '../../includes/auth.php';
 require_login();
 require_once '../../includes/db_connect.php';
 
-$userId        = usuario_id();
-$nivel         = usuario_nivel();
-$isAdmin       = is_admin();
-$podeGerenciar = can_manage_registros();
+$userId  = usuario_id();
+$isAdmin = is_admin();
 
 $id = (int)($_GET['id'] ?? 0);
 if (!$id) { header('Location: ../index.php'); exit; }
 
-// Nível 3 só pode editar suas próprias demandas
-if (!$podeGerenciar) {
-    $stmtCheck = $conn->prepare("SELECT id FROM demandas WHERE id = ? AND id_usuario = ?");
-    $stmtCheck->bind_param('ii', $id, $userId);
-    $stmtCheck->execute();
-    $stmtCheck->store_result();
-    if ($stmtCheck->num_rows === 0) { header('Location: ../index.php'); exit; }
-    $stmtCheck->close();
-}
-
-// Dados da demanda
+// Busca a demanda para validar permissão
 $stmtD = $conn->prepare("SELECT * FROM demandas WHERE id = ?");
 $stmtD->bind_param('i', $id);
 $stmtD->execute();
@@ -30,7 +18,14 @@ if (!$res || $res->num_rows === 0) { header('Location: ../index.php'); exit; }
 $d = $res->fetch_assoc();
 $stmtD->close();
 
-// Usuários
+// Verifica permissão usando a função centralizada do auth.php
+if (!pode_editar_tarefa((int)$d['id_usuario'])) {
+    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Você não tem permissão para editar esta demanda.'];
+    header('Location: ../index.php');
+    exit;
+}
+
+// Usuários (somente admin pode trocar o responsável)
 $usuarios = [];
 if ($isAdmin) {
     $resU = $conn->query("SELECT id, nome FROM usuarios ORDER BY nome");
@@ -63,19 +58,22 @@ $rowsCli = $resCliSel->get_result();
 while ($row = $rowsCli->fetch_assoc()) $cliSelecionados[] = (int)$row['id_cliente'];
 $resCliSel->close();
 
-// Categorias com subcategorias
+// Categorias com subcategorias (espelhadas no checklist Brasil DNA 2026)
 $categorias = [
     'Gestão & Planejamento' => [
         'Cronograma',
         'Locais',
         'Metas (clientes, marcas, números de pessoas)',
+        'Parcerias',
+        'Controle e Follow Up',
     ],
     'Comunicação' => [
+        'Videos Promo',
+        'Webinars',
         'Releases Brasil',
         'Releases EUA',
-        'Vídeos promocionais',
         'Newsletter',
-        'Redes Sociais',
+        'Posts SoMe',
         'Plataforma',
     ],
     'Documentação' => [
@@ -87,15 +85,33 @@ $categorias = [
         'Fornecedores',
     ],
     'Organização e Execução' => [
-        'Webinars',
         'Roadshow Presencial',
         'Roadshow Virtual',
         'Eventos Especiais',
+        'Agenda B2B',
+        'Travel Arrangements',
+        'Promoção e RSVP',
     ],
-    'Relatórios' => [],
+    'Relatórios' => [
+        'Template de Relatórios',
+        'Atualização de Dados',
+        'Entrega de Relatórios',
+    ],
 ];
 
 $meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+// Subcategorias de Comunicação que exibem campos extras
+$catConteudo = [
+    'Comunicação › Videos Promo',
+    'Comunicação › Webinars',
+    'Comunicação › Releases Brasil',
+    'Comunicação › Releases EUA',
+    'Comunicação › Newsletter',
+    'Comunicação › Posts SoMe',
+    'Comunicação › Plataforma',
+];
+$mostrarConteudo = in_array($d['categoria'], $catConteudo);
 
 $flash = $_SESSION['flash'] ?? null;
 unset($_SESSION['flash']);
@@ -200,30 +216,30 @@ unset($_SESSION['flash']);
                     <div class="section-title">Identificação</div>
                     <div class="row g-3">
 
+                        <!-- Responsável: admin pode trocar, operacional vê só o nome -->
                         <?php if ($isAdmin): ?>
                         <div class="col-md-6">
                             <label class="form-label">Responsável</label>
                             <select name="id_usuario" class="form-select" required>
                                 <?php foreach ($usuarios as $u): ?>
-                                <option value="<?= $u['id'] ?>" <?= $d['id_usuario'] == $u['id'] ? 'selected' : '' ?>><?= htmlspecialchars($u['nome']) ?></option>
+                                <option value="<?= $u['id'] ?>" <?= $d['id_usuario'] == $u['id'] ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($u['nome']) ?>
+                                </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
                         <?php else: ?>
-                        <input type="hidden" name="id_usuario" value="<?= $userId ?>">
+                        <input type="hidden" name="id_usuario" value="<?= $d['id_usuario'] ?>">
                         <?php endif; ?>
 
                         <div class="col-md-6">
                             <label class="form-label">Categoria <span class="text-danger">*</span></label>
                             <select name="categoria" id="categoria" class="form-select" required>
-                                <?php
-                                // Monta todas as opções para comparar com $d['categoria']
-                                foreach ($categorias as $grupo => $subs):
+                                <?php foreach ($categorias as $grupo => $subs):
                                     if (empty($subs)):
                                         $val = $grupo;
                                 ?>
-                                        <option value="<?= htmlspecialchars($val) ?>"
-                                            <?= $d['categoria'] === $val ? 'selected' : '' ?>>
+                                        <option value="<?= htmlspecialchars($val) ?>" <?= $d['categoria'] === $val ? 'selected' : '' ?>>
                                             <?= htmlspecialchars($grupo) ?>
                                         </option>
                                 <?php
@@ -233,8 +249,7 @@ unset($_SESSION['flash']);
                                         <?php foreach ($subs as $sub):
                                             $val = $grupo . ' › ' . $sub;
                                         ?>
-                                            <option value="<?= htmlspecialchars($val) ?>"
-                                                <?= $d['categoria'] === $val ? 'selected' : '' ?>>
+                                            <option value="<?= htmlspecialchars($val) ?>" <?= $d['categoria'] === $val ? 'selected' : '' ?>>
                                                 <?= htmlspecialchars($sub) ?>
                                             </option>
                                         <?php endforeach; ?>
@@ -265,7 +280,9 @@ unset($_SESSION['flash']);
                             <label class="form-label">Prioridade</label>
                             <select name="prioridade" class="form-select">
                                 <?php foreach (['Alta','Media','Baixa'] as $p): ?>
-                                <option value="<?= $p ?>" <?= $d['prioridade'] === $p ? 'selected' : '' ?>><?= $p === 'Media' ? 'Média' : $p ?></option>
+                                <option value="<?= $p ?>" <?= $d['prioridade'] === $p ? 'selected' : '' ?>>
+                                    <?= $p === 'Media' ? 'Média' : $p ?>
+                                </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -276,11 +293,7 @@ unset($_SESSION['flash']);
                         </div>
                     </div>
 
-                    <!-- Campos Conteúdo (dinâmico para Comunicação) -->
-                    <?php
-                    $catConteudo = ['Comunicação › Releases Brasil','Comunicação › Releases EUA','Comunicação › Vídeos promocionais','Comunicação › Newsletter','Comunicação › Redes Sociais','Comunicação › Plataforma'];
-                    $mostrarConteudo = in_array($d['categoria'], $catConteudo);
-                    ?>
+                    <!-- Campos Comunicação (dinâmico) -->
                     <div id="fields-conteudo" class="<?= $mostrarConteudo ? '' : 'd-none' ?>">
                         <div class="section-title">Detalhes — Comunicação</div>
                         <div class="row g-3">
@@ -303,11 +316,8 @@ unset($_SESSION['flash']);
                         </div>
                     </div>
 
-                    <!-- Campos Gestão/Organização (para as demais) -->
-                    <?php
-                    $mostrarGestao = !$mostrarConteudo;
-                    ?>
-                    <div id="fields-gestao" class="<?= $mostrarGestao ? '' : 'd-none' ?>">
+                    <!-- Campos demais categorias -->
+                    <div id="fields-gestao" class="<?= $mostrarConteudo ? 'd-none' : '' ?>">
                         <div class="section-title">Detalhes</div>
                         <div class="row g-3">
                             <div class="col-md-6">
@@ -321,18 +331,15 @@ unset($_SESSION['flash']);
                         </div>
                     </div>
 
-                    <!-- EMPRESAS ENVOLVIDAS -->
+                    <!-- EMPRESAS & CLIENTES -->
                     <div class="section-title mt-3">Empresas &amp; Clientes Envolvidos</div>
                     <div class="row g-3">
                         <div class="col-md-12">
                             <div class="chip-label-section mb-1"><i class="bi bi-building me-1"></i>Empresas Envolvidas</div>
                             <div class="chip-select-group">
                                 <?php foreach ($empresas as $emp): ?>
-                                    <input type="checkbox"
-                                           name="empresas_envolvidas[]"
-                                           id="emp_<?= $emp['id'] ?>"
-                                           value="<?= $emp['id'] ?>"
-                                           <?= in_array((int)$emp['id'], $empSelecionados) ? 'checked' : '' ?>>
+                                    <input type="checkbox" name="empresas_envolvidas[]" id="emp_<?= $emp['id'] ?>" value="<?= $emp['id'] ?>"
+                                        <?= in_array((int)$emp['id'], $empSelecionados) ? 'checked' : '' ?>>
                                     <label for="emp_<?= $emp['id'] ?>"><?= htmlspecialchars($emp['empresa']) ?></label>
                                 <?php endforeach; ?>
                                 <?php if (empty($empresas)): ?>
@@ -340,16 +347,12 @@ unset($_SESSION['flash']);
                                 <?php endif; ?>
                             </div>
                         </div>
-
                         <div class="col-md-12">
                             <div class="chip-label-section mb-1"><i class="bi bi-person-badge me-1"></i>Clientes Envolvidos</div>
                             <div class="chip-select-group">
                                 <?php foreach ($clientes as $cli): ?>
-                                    <input type="checkbox"
-                                           name="clientes_envolvidos[]"
-                                           id="cli_<?= $cli['id'] ?>"
-                                           value="<?= $cli['id'] ?>"
-                                           <?= in_array((int)$cli['id'], $cliSelecionados) ? 'checked' : '' ?>>
+                                    <input type="checkbox" name="clientes_envolvidos[]" id="cli_<?= $cli['id'] ?>" value="<?= $cli['id'] ?>"
+                                        <?= in_array((int)$cli['id'], $cliSelecionados) ? 'checked' : '' ?>>
                                     <label for="cli_<?= $cli['id'] ?>"><?= htmlspecialchars($cli['company']) ?></label>
                                 <?php endforeach; ?>
                                 <?php if (empty($clientes)): ?>
@@ -359,6 +362,7 @@ unset($_SESSION['flash']);
                         </div>
                     </div>
 
+                    <!-- Status -->
                     <div class="section-title">Status</div>
                     <div class="row g-3">
                         <div class="col-md-4">
@@ -384,14 +388,15 @@ unset($_SESSION['flash']);
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 const CAT_CONTEUDO = [
+    'Comunicação › Videos Promo',
+    'Comunicação › Webinars',
     'Comunicação › Releases Brasil',
     'Comunicação › Releases EUA',
-    'Comunicação › Vídeos promocionais',
     'Comunicação › Newsletter',
-    'Comunicação › Redes Sociais',
+    'Comunicação › Posts SoMe',
     'Comunicação › Plataforma'
 ];
-document.getElementById('categoria').addEventListener('change', function() {
+document.getElementById('categoria').addEventListener('change', function () {
     const cat = this.value;
     const isConteudo = CAT_CONTEUDO.includes(cat);
     document.getElementById('fields-conteudo').classList.toggle('d-none', !isConteudo);

@@ -1,14 +1,13 @@
 <?php
 require_once '../../includes/auth.php';
 require_login();
-can_manage_registros() || (http_response_code(403) && exit('Acesso negado. Apenas níveis 1 e 2 podem criar demandas.'));
 require_once '../../includes/db_connect.php';
 
 $userId   = usuario_id();
 $userNome = usuario_nome();
 $isAdmin  = is_admin();
 
-// Lista de usuários (nível 1 pode cadastrar para qualquer um)
+// Lista de usuários — admin pode cadastrar para qualquer um
 $usuarios = [];
 if ($isAdmin) {
     $resU = $conn->query("SELECT id, nome FROM usuarios ORDER BY nome");
@@ -24,19 +23,22 @@ $clientes = [];
 $resCli = $conn->query("SELECT id, company FROM clientes ORDER BY company ASC");
 while ($c = $resCli->fetch_assoc()) $clientes[] = $c;
 
-// Categorias com subcategorias
+// Categorias com subcategorias (espelhadas no checklist Brasil DNA 2026)
 $categorias = [
     'Gestão & Planejamento' => [
         'Cronograma',
         'Locais',
         'Metas (clientes, marcas, números de pessoas)',
+        'Parcerias',
+        'Controle e Follow Up',
     ],
     'Comunicação' => [
+        'Videos Promo',
+        'Webinars',
         'Releases Brasil',
         'Releases EUA',
-        'Vídeos promocionais',
         'Newsletter',
-        'Redes Sociais',
+        'Posts SoMe',
         'Plataforma',
     ],
     'Documentação' => [
@@ -48,12 +50,18 @@ $categorias = [
         'Fornecedores',
     ],
     'Organização e Execução' => [
-        'Webinars',
         'Roadshow Presencial',
         'Roadshow Virtual',
         'Eventos Especiais',
+        'Agenda B2B',
+        'Travel Arrangements',
+        'Promoção e RSVP',
     ],
-    'Relatórios' => [],
+    'Relatórios' => [
+        'Template de Relatórios',
+        'Atualização de Dados',
+        'Entrega de Relatórios',
+    ],
 ];
 
 $meses = [
@@ -78,9 +86,7 @@ $statusOpcoes = ['Pendente','Em andamento','Produzindo','Enviado','Publicado','A
             gap: 8px;
             padding: 6px 0;
         }
-        .chip-select-group input[type="checkbox"] {
-            display: none;
-        }
+        .chip-select-group input[type="checkbox"] { display: none; }
         .chip-select-group label {
             display: inline-flex;
             align-items: center;
@@ -129,16 +135,8 @@ $statusOpcoes = ['Pendente','Em andamento','Produzindo','Enviado','Publicado','A
             color: #6c757d;
             margin-bottom: 2px;
         }
-        /* Estilo para optgroup no select de categorias */
-        #selectCategoria optgroup {
-            font-weight: 700;
-            color: #343a40;
-        }
-        #selectCategoria option {
-            font-weight: 400;
-            padding-left: 8px;
-            color: #495057;
-        }
+        #selectCategoria optgroup { font-weight: 700; color: #343a40; }
+        #selectCategoria option   { font-weight: 400; color: #495057; }
     </style>
 </head>
 <body>
@@ -206,7 +204,9 @@ $statusOpcoes = ['Pendente','Em andamento','Produzindo','Enviado','Publicado','A
                                         <?php else: ?>
                                             <optgroup label="<?= htmlspecialchars($grupo) ?>">
                                                 <?php foreach ($subs as $sub): ?>
-                                                <option value="<?= htmlspecialchars($grupo . ' › ' . $sub) ?>"><?= htmlspecialchars($sub) ?></option>
+                                                <option value="<?= htmlspecialchars($grupo . ' › ' . $sub) ?>">
+                                                    <?= htmlspecialchars($sub) ?>
+                                                </option>
                                                 <?php endforeach; ?>
                                             </optgroup>
                                         <?php endif; ?>
@@ -232,7 +232,7 @@ $statusOpcoes = ['Pendente','Em andamento','Produzindo','Enviado','Publicado','A
                                     placeholder="Descreva a tarefa ou demanda..."></textarea>
                             </div>
 
-                            <!-- Tema/Conteúdo (dinâmico) -->
+                            <!-- Tema/Conteúdo (dinâmico para Comunicação) -->
                             <div class="col-md-6 campo-conteudo d-none">
                                 <label class="form-label fw-semibold">Tema / Conteúdo</label>
                                 <input type="text" name="tipo_conteudo" class="form-control" placeholder="Tema ou assunto do conteúdo">
@@ -269,10 +269,7 @@ $statusOpcoes = ['Pendente','Em andamento','Produzindo','Enviado','Publicado','A
                                 <div class="chip-label-section mb-1"><i class="bi bi-building me-1"></i>Empresas Envolvidas</div>
                                 <div class="chip-select-group">
                                     <?php foreach ($empresas as $emp): ?>
-                                        <input type="checkbox"
-                                               name="empresas_envolvidas[]"
-                                               id="emp_<?= $emp['id'] ?>"
-                                               value="<?= $emp['id'] ?>">
+                                        <input type="checkbox" name="empresas_envolvidas[]" id="emp_<?= $emp['id'] ?>" value="<?= $emp['id'] ?>">
                                         <label for="emp_<?= $emp['id'] ?>"><?= htmlspecialchars($emp['empresa']) ?></label>
                                     <?php endforeach; ?>
                                     <?php if (empty($empresas)): ?>
@@ -286,10 +283,7 @@ $statusOpcoes = ['Pendente','Em andamento','Produzindo','Enviado','Publicado','A
                                 <div class="chip-label-section mb-1"><i class="bi bi-person-badge me-1"></i>Clientes Envolvidos</div>
                                 <div class="chip-select-group">
                                     <?php foreach ($clientes as $cli): ?>
-                                        <input type="checkbox"
-                                               name="clientes_envolvidos[]"
-                                               id="cli_<?= $cli['id'] ?>"
-                                               value="<?= $cli['id'] ?>">
+                                        <input type="checkbox" name="clientes_envolvidos[]" id="cli_<?= $cli['id'] ?>" value="<?= $cli['id'] ?>">
                                         <label for="cli_<?= $cli['id'] ?>"><?= htmlspecialchars($cli['company']) ?></label>
                                     <?php endforeach; ?>
                                     <?php if (empty($clientes)): ?>
@@ -298,7 +292,7 @@ $statusOpcoes = ['Pendente','Em andamento','Produzindo','Enviado','Publicado','A
                                 </div>
                             </div>
 
-                            <!-- Link externo (dinâmico) -->
+                            <!-- Link externo (dinâmico para Comunicação) -->
                             <div class="col-md-6 campo-link d-none">
                                 <label class="form-label fw-semibold">Link Externo</label>
                                 <input type="url" name="link_externo" class="form-control" placeholder="https://...">
@@ -330,14 +324,22 @@ $statusOpcoes = ['Pendente','Em andamento','Produzindo','Enviado','Publicado','A
 <?php include '../../pages/footer.php'; ?>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-// Categorias que exibem campo Tema/Conteúdo e Link
-const CAT_CONTEUDO = ['Comunicação › Vídeos promocionais','Comunicação › Newsletter','Comunicação › Redes Sociais','Comunicação › Plataforma','Comunicação › Releases Brasil','Comunicação › Releases EUA'];
-const CAT_LINK     = [...CAT_CONTEUDO];
+// Subcategorias de Comunicação que exibem campo Tema/Conteúdo e Link
+const CAT_CONTEUDO = [
+    'Comunicação › Videos Promo',
+    'Comunicação › Webinars',
+    'Comunicação › Releases Brasil',
+    'Comunicação › Releases EUA',
+    'Comunicação › Newsletter',
+    'Comunicação › Posts SoMe',
+    'Comunicação › Plataforma'
+];
 
 document.getElementById('selectCategoria').addEventListener('change', function () {
     const cat = this.value;
-    document.querySelectorAll('.campo-conteudo').forEach(el => el.classList.toggle('d-none', !CAT_CONTEUDO.includes(cat)));
-    document.querySelectorAll('.campo-link').forEach(el     => el.classList.toggle('d-none', !CAT_LINK.includes(cat)));
+    const isConteudo = CAT_CONTEUDO.includes(cat);
+    document.querySelectorAll('.campo-conteudo').forEach(el => el.classList.toggle('d-none', !isConteudo));
+    document.querySelectorAll('.campo-link').forEach(el     => el.classList.toggle('d-none', !isConteudo));
 });
 </script>
 </body>
