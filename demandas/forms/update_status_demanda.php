@@ -22,20 +22,29 @@ if (!$id || !in_array($status, $statusValidos, true)) {
     exit;
 }
 
-$userId        = usuario_id();
-$podeGerenciar = can_manage_registros();
+$userId = usuario_id();
 
-// Nível 3 só pode alterar status das suas próprias demandas
-if ($podeGerenciar) {
-    $sql  = "UPDATE demandas SET status = ? WHERE id = ?";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param('si', $status, $id);
-} else {
-    $sql  = "UPDATE demandas SET status = ? WHERE id = ? AND id_usuario = ?";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param('sii', $status, $id, $userId);
+// Busca o id_usuario responsável pela demanda
+$stmtOwner = $conn->prepare("SELECT id_usuario FROM demandas WHERE id = ?");
+$stmtOwner->bind_param('i', $id);
+$stmtOwner->execute();
+$owner = $stmtOwner->get_result()->fetch_assoc();
+$stmtOwner->close();
+
+if (!$owner) {
+    echo json_encode(['success' => false, 'msg' => 'Demanda não encontrada']);
+    exit;
 }
 
+// Verifica permissão usando a função centralizada do auth.php
+if (!pode_editar_tarefa((int)$owner['id_usuario'])) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'msg' => 'Sem permissão para alterar esta demanda']);
+    exit;
+}
+
+$stmt = $conn->prepare("UPDATE demandas SET status = ? WHERE id = ?");
+$stmt->bind_param('si', $status, $id);
 $ok = $stmt->execute();
 $stmt->close();
 

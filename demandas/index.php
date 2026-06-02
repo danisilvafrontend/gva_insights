@@ -3,11 +3,8 @@ require_once '../includes/auth.php';
 require_login();
 require_once '../includes/db_connect.php';
 
-$userId          = usuario_id();
-$userNome        = usuario_nome();
-$nivel           = usuario_nivel();
-$isAdmin         = ($nivel === 1);
-$podeGerenciar   = ($nivel <= 2); // níveis 1 e 2 vêem todas as demandas
+$userId  = usuario_id();
+$isAdmin = is_admin();
 
 // Filtros
 $filtroStatus      = $_GET['status']      ?? '';
@@ -19,8 +16,8 @@ $where  = [];
 $params = [];
 $types  = '';
 
-// Nível 3 vê apenas as próprias demandas
-if (!$podeGerenciar) {
+// Operacional só vê as próprias demandas
+if (!$isAdmin) {
     $where[]  = 'd.id_usuario = ?';
     $params[] = $userId;
     $types   .= 'i';
@@ -32,8 +29,8 @@ if ($filtroStatus !== '') {
     $types   .= 's';
 }
 if ($filtroCategoria !== '') {
-    $where[]  = 'd.categoria = ?';
-    $params[] = $filtroCategoria;
+    $where[]  = 'd.categoria LIKE ?';
+    $params[] = $filtroCategoria . '%';
     $types   .= 's';
 }
 if ($filtroMes !== '') {
@@ -41,7 +38,7 @@ if ($filtroMes !== '') {
     $params[] = $filtroMes;
     $types   .= 's';
 }
-if ($podeGerenciar && $filtroResponsavel !== '') {
+if ($isAdmin && $filtroResponsavel !== '') {
     $where[]  = 'd.id_usuario = ?';
     $params[] = $filtroResponsavel;
     $types   .= 'i';
@@ -65,31 +62,53 @@ $demandas = $result->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
 // KPIs
-$kpiBase   = !$podeGerenciar ? "WHERE id_usuario = $userId" : '';
-$kpiSql    = "SELECT status, COUNT(*) as total FROM demandas $kpiBase GROUP BY status";
-$kpiResult = $conn->query($kpiSql);
+$kpiWhere  = !$isAdmin ? "WHERE id_usuario = $userId" : '';
+$kpiResult = $conn->query("SELECT status, COUNT(*) as total FROM demandas $kpiWhere GROUP BY status");
 $kpis      = ['total' => 0, 'Done' => 0, 'Em andamento' => 0, 'Pendente' => 0, 'Atrasado' => 0];
 while ($k = $kpiResult->fetch_assoc()) {
     $kpis[$k['status']] = (int)$k['total'];
     $kpis['total']     += (int)$k['total'];
 }
 
-// Lista usuários para filtro (níveis 1 e 2)
+// Lista usuários para o filtro de responsável (somente admin)
 $usuarios = [];
-if ($podeGerenciar) {
+if ($isAdmin) {
     $resU = $conn->query("SELECT id, nome FROM usuarios ORDER BY nome");
     while ($u = $resU->fetch_assoc()) $usuarios[] = $u;
 }
 
+// Categorias e subcategorias
 $categorias = [
-    'Gestão & Planejamento',
-    'Videos Promo',
-    'Webinars',
-    'News & Releases',
-    'Posts SoMe',
-    'Roadshow Presencial',
-    'Roadshow Virtual / Eventos Especiais'
+    'Gestão & Planejamento' => [
+        'Cronograma',
+        'Locais',
+        'Metas (clientes, marcas, números de pessoas)',
+    ],
+    'Comunicação' => [
+        'Releases Brasil',
+        'Releases EUA',
+        'Vídeos promocionais',
+        'Newsletter',
+        'Redes Sociais',
+        'Plataforma',
+    ],
+    'Documentação' => [
+        'Contratos',
+        'Invoice',
+        'Acordos',
+        'Clientes',
+        'Parceiros',
+        'Fornecedores',
+    ],
+    'Organização e Execução' => [
+        'Webinars',
+        'Roadshow Presencial',
+        'Roadshow Virtual',
+        'Eventos Especiais',
+    ],
+    'Relatórios' => [],
 ];
+
 $meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
 $flash = $_SESSION['flash'] ?? null;
@@ -127,11 +146,9 @@ unset($_SESSION['flash']);
                     <h4 class="mb-0"><i class="bi bi-kanban me-2 text-primary"></i>Controle de Demandas</h4>
                     <small class="text-muted">Brasil DNA 2026</small>
                 </div>
-                <?php if ($podeGerenciar): ?>
                 <a href="forms/nova_demanda.php" class="btn btn-primary">
                     <i class="bi bi-plus-lg me-1"></i> Nova Demanda
                 </a>
-                <?php endif; ?>
             </div>
 
             <!-- KPIs -->
@@ -189,8 +206,18 @@ unset($_SESSION['flash']);
                 <div class="col-md-3">
                     <select name="categoria" class="form-select form-select-sm">
                         <option value="">Todas as Categorias</option>
-                        <?php foreach ($categorias as $cat): ?>
-                        <option value="<?= $cat ?>" <?= $filtroCategoria === $cat ? 'selected' : '' ?>><?= $cat ?></option>
+                        <?php foreach ($categorias as $cat => $subs): ?>
+                        <optgroup label="<?= htmlspecialchars($cat) ?>">
+                            <option value="<?= htmlspecialchars($cat) ?>" <?= $filtroCategoria === $cat ? 'selected' : '' ?>>
+                                └ Todas de <?= htmlspecialchars($cat) ?>
+                            </option>
+                            <?php foreach ($subs as $sub): ?>
+                            <?php $val = $cat . ' › ' . $sub; ?>
+                            <option value="<?= htmlspecialchars($val) ?>" <?= $filtroCategoria === $val ? 'selected' : '' ?>>
+                                &nbsp;&nbsp;&nbsp;<?= htmlspecialchars($sub) ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </optgroup>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -202,8 +229,8 @@ unset($_SESSION['flash']);
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <?php if ($podeGerenciar): ?>
-                <div class="col-md-3">
+                <?php if ($isAdmin): ?>
+                <div class="col-md-2">
                     <select name="responsavel" class="form-select form-select-sm">
                         <option value="">Todos os Responsáveis</option>
                         <?php foreach ($usuarios as $u): ?>
@@ -242,9 +269,9 @@ unset($_SESSION['flash']);
                     <?php else: ?>
                     <?php foreach ($demandas as $d): ?>
                         <?php
-                        $hoje       = date('Y-m-d');
-                        $atrasado   = ($d['deadline'] && $d['deadline'] < $hoje && $d['status'] !== 'Done');
-                        $prioClass  = ['Alta' => 'danger', 'Média' => 'warning', 'Baixa' => 'secondary'][$d['prioridade']] ?? 'secondary';
+                        $hoje      = date('Y-m-d');
+                        $atrasado  = ($d['deadline'] && $d['deadline'] < $hoje && $d['status'] !== 'Done');
+                        $prioClass = ['Alta' => 'danger', 'Média' => 'warning', 'Baixa' => 'secondary'][$d['prioridade']] ?? 'secondary';
                         $statusClass = [
                             'Done'         => 'success', 'Em andamento' => 'primary',
                             'Produzindo'   => 'info',    'Enviado'      => 'info',
@@ -252,8 +279,7 @@ unset($_SESSION['flash']);
                             'Pendente'     => 'secondary','Atrasado'    => 'danger'
                         ][$d['status']] ?? 'secondary';
 
-                        // Nível 3 só pode editar suas próprias demandas
-                        $podeEditar = $podeGerenciar || ($nivel === 3 && $d['id_usuario'] == $userId);
+                        $podeEditar = pode_editar_tarefa((int)$d['id_usuario']);
                         ?>
                         <tr class="<?= $atrasado ? 'table-danger' : '' ?>">
                             <td><?= $d['id'] ?></td>
@@ -279,10 +305,10 @@ unset($_SESSION['flash']);
                             </td>
                             <td>
                                 <?php if ($podeEditar): ?>
-                                <a href="forms/editar_demanda.php?id=<?= $d['id'] ?>" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                                <a href="forms/editar_demanda.php?id=<?= $d['id'] ?>" class="btn btn-sm btn-outline-primary" title="Editar"><i class="bi bi-pencil"></i></a>
                                 <?php endif; ?>
                                 <?php if ($isAdmin): ?>
-                                <a href="forms/deletar_demanda.php?id=<?= $d['id'] ?>" class="btn btn-sm btn-outline-danger" onclick="return confirm('Confirma exclusão?')"><i class="bi bi-trash"></i></a>
+                                <a href="forms/deletar_demanda.php?id=<?= $d['id'] ?>" class="btn btn-sm btn-outline-danger" title="Excluir" onclick="return confirm('Confirma exclusão?')"><i class="bi bi-trash"></i></a>
                                 <?php endif; ?>
                             </td>
                         </tr>
