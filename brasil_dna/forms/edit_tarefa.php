@@ -28,9 +28,7 @@ $conn->close();
 
 <body class="bdna-page">
 <div class="bdna-wrapper">
-  <div class="bg-dark text-white p-4 rounded">
-    <?php include '../../pages/menu_lateral.php'; ?>  
-  </div>
+  <?php include '../../pages/menu_lateral.php'; ?>
 
   <main class="bdna-main">
     <div class="bdna-page-header">

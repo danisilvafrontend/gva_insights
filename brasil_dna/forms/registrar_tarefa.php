@@ -1,12 +1,9 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 if (!isset($_SESSION['user_id'])) { header('Location: ../../index.php'); exit; }
 
 include '../../includes/config.php';
 include '../../includes/db_connect.php';
-require_once '../teams_webhook.php';
 mysqli_set_charset($conn, 'utf8mb4');
 
 $categorias = $conn->query('SELECT id, nome, cor_hex FROM bdna_categorias WHERE ativo=1 ORDER BY ordem');
@@ -20,9 +17,7 @@ $conn->close();
 
 <body class="bdna-page">
 <div class="bdna-wrapper">
-  <div class="bg-dark text-white p-4 rounded">
-    <?php include '../../pages/menu_lateral.php'; ?>  
-  </div>
+  <?php include '../../pages/menu_lateral.php'; ?>
 
   <main class="bdna-main">
     <div class="bdna-page-header">

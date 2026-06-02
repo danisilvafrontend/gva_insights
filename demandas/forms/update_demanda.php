@@ -88,14 +88,14 @@ if ($stmt->execute()) {
     }
 
     // ── Sincroniza empresas: apaga tudo e reinclui marcados ────────────────
-    $conn->prepare("DELETE FROM demandas_empresas WHERE id_demanda = ?")->bind_param('i', $id) | null;
-    $stmtDel = $conn->prepare("DELETE FROM demandas_empresas WHERE id_demanda = ?");
+    $conn->prepare("DELETE FROM demandas_empresas WHERE iddemanda = ?")->bind_param('i', $id) | null;
+    $stmtDel = $conn->prepare("DELETE FROM demandas_empresas WHERE iddemanda = ?");
     $stmtDel->bind_param('i', $id);
     $stmtDel->execute();
     $stmtDel->close();
 
     if (!empty($empresas_envolvidas)) {
-        $stmtEmp = $conn->prepare("INSERT IGNORE INTO demandas_empresas (id_demanda, id_empresa) VALUES (?, ?)");
+        $stmtEmp = $conn->prepare("INSERT IGNORE INTO demandas_empresas (iddemanda, idempresa) VALUES (?, ?)");
         foreach ($empresas_envolvidas as $idEmpresa) {
             if ($idEmpresa > 0) {
                 $stmtEmp->bind_param('ii', $id, $idEmpresa);
@@ -106,13 +106,13 @@ if ($stmt->execute()) {
     }
 
     // ── Sincroniza clientes: apaga tudo e reinclui marcados ────────────────
-    $stmtDel2 = $conn->prepare("DELETE FROM demandas_clientes WHERE id_demanda = ?");
+    $stmtDel2 = $conn->prepare("DELETE FROM demandas_clientes WHERE iddemanda = ?");
     $stmtDel2->bind_param('i', $id);
     $stmtDel2->execute();
     $stmtDel2->close();
 
     if (!empty($clientes_envolvidos)) {
-        $stmtCli = $conn->prepare("INSERT IGNORE INTO demandas_clientes (id_demanda, id_cliente) VALUES (?, ?)");
+        $stmtCli = $conn->prepare("INSERT IGNORE INTO demandas_clientes (iddemanda, idcliente) VALUES (?, ?)");
         foreach ($clientes_envolvidos as $idCliente) {
             if ($idCliente > 0) {
                 $stmtCli->bind_param('ii', $id, $idCliente);

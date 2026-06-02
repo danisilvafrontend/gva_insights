@@ -148,14 +148,13 @@ function notificarTeams(array $dados): bool
                 ? date('d/m/Y', strtotime($dados['deadline']))
                 : 'Não definido';
 
-
-    $descCal = implode("\n", array_filter([
-        'Responsável: ' . ($dados['responsavel'] ?? ''),
-        'Categoria: '  . ($dados['categoria']   ?? ''),
-        'Prioridade: ' . ($dados['prioridade']  ?? ''),
-        !empty($dados['empresas']) ? 'Empresas: ' . $dados['empresas'] : '',
-        !empty($dados['clientes']) ? 'Clientes: ' . $dados['clientes'] : '',
-        'Sistema: '    . ($dados['link_sistema'] ?? ''),
+    $descCal = implode('\n', array_filter([
+        'Responsável: '  . ($dados['responsavel'] ?? ''),
+        'Categoria: '    . ($dados['categoria']   ?? ''),
+        'Prioridade: '   . ($dados['prioridade']  ?? ''),
+        !empty($dados['empresas']) ? 'Empresas: '  . $dados['empresas'] : '',
+        !empty($dados['clientes']) ? 'Clientes: '  . $dados['clientes'] : '',
+        'Sistema: '      . ($dados['link_sistema'] ?? ''),
     ]));
 
     $calLink = _outlookCalendarLink(
@@ -193,13 +192,12 @@ function notificarTeamsChat(array $dados): bool
                  ? date('d/m/Y', strtotime($dados['deadline']))
                  : 'Não definido';
 
-
-    $descCal = implode("\n", array_filter([
-        'Categoria: '  . ($dados['categoria']  ?? ''),
-        'Prioridade: ' . ($dados['prioridade'] ?? ''),
+    $descCal = implode('\n', array_filter([
+        'Categoria: '   . ($dados['categoria']  ?? ''),
+        'Prioridade: '  . ($dados['prioridade'] ?? ''),
         !empty($dados['empresas']) ? 'Empresas: ' . $dados['empresas'] : '',
         !empty($dados['clientes']) ? 'Clientes: ' . $dados['clientes'] : '',
-        'Sistema: '    . ($dados['link_sistema'] ?? ''),
+        'Sistema: '     . ($dados['link_sistema'] ?? ''),
     ]));
 
     $calLink = _outlookCalendarLink(

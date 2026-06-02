@@ -1,6 +1,4 @@
-<?
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+<?php
 require_once '../../includes/auth.php';
 require_login();
 can_manage_registros() || (http_response_code(403) && exit('Acesso negado.'));
@@ -75,10 +73,10 @@ $stmt->close();
 
 // ── Salva empresas envolvidas ─────────────────────────────────
 if (!empty($empresas_envolvidas)) {
-    $stmtEmp = $conn->prepare("INSERT IGNORE INTO demandas_empresas (id_demanda, id_empresa) VALUES (?, ?)");
-    foreach ($empresas_envolvidas as $id_Empresa) {
-        if ($id_Empresa > 0) {
-            $stmtEmp->bind_param('ii', $novo_Id, $id_Empresa);
+    $stmtEmp = $conn->prepare("INSERT IGNORE INTO demandas_empresas (iddemanda, idempresa) VALUES (?, ?)");
+    foreach ($empresas_envolvidas as $idEmpresa) {
+        if ($idEmpresa > 0) {
+            $stmtEmp->bind_param('ii', $novoId, $idEmpresa);
             $stmtEmp->execute();
         }
     }
@@ -87,10 +85,10 @@ if (!empty($empresas_envolvidas)) {
 
 // ── Salva clientes envolvidos ────────────────────────────────
 if (!empty($clientes_envolvidos)) {
-    $stmtCli = $conn->prepare("INSERT IGNORE INTO demandas_clientes (id_demanda, id_cliente) VALUES (?, ?)");
-    foreach ($clientes_envolvidos as $id_Cliente) {
-        if ($id_Cliente > 0) {
-            $stmtCli->bind_param('ii', $novoId, $id_Cliente);
+    $stmtCli = $conn->prepare("INSERT IGNORE INTO demandas_clientes (iddemanda, idcliente) VALUES (?, ?)");
+    foreach ($clientes_envolvidos as $idCliente) {
+        if ($idCliente > 0) {
+            $stmtCli->bind_param('ii', $novoId, $idCliente);
             $stmtCli->execute();
         }
     }
@@ -109,24 +107,24 @@ $nomesEmpresas = '';
 if (!empty($empresas_envolvidas)) {
     $placeholders = implode(',', array_fill(0, count($empresas_envolvidas), '?'));
     $types        = str_repeat('i', count($empresas_envolvidas));
-    $stmtE2       = $conn->prepare("SELECT empresa FROM empresas WHERE id IN ($placeholders)");
+    $stmtE2       = $conn->prepare("SELECT nome FROM empresas WHERE id IN ($placeholders)");
     $stmtE2->bind_param($types, ...$empresas_envolvidas);
     $stmtE2->execute();
     $rowsE         = $stmtE2->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmtE2->close();
-    $nomesEmpresas = implode(', ', array_column($rowsE, 'empresa'));
+    $nomesEmpresas = implode(', ', array_column($rowsE, 'nome'));
 }
 
 $nomesClientes = '';
 if (!empty($clientes_envolvidos)) {
     $placeholders = implode(',', array_fill(0, count($clientes_envolvidos), '?'));
     $types        = str_repeat('i', count($clientes_envolvidos));
-    $stmtC2       = $conn->prepare("SELECT company FROM clientes WHERE id IN ($placeholders)");
+    $stmtC2       = $conn->prepare("SELECT nome FROM clientes WHERE id IN ($placeholders)");
     $stmtC2->bind_param($types, ...$clientes_envolvidos);
     $stmtC2->execute();
     $rowsC         = $stmtC2->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmtC2->close();
-    $nomesClientes = implode(', ', array_column($rowsC, 'company'));
+    $nomesClientes = implode(', ', array_column($rowsC, 'nome'));
 }
 
 // ── Notificação Teams ──────────────────────────────────────────

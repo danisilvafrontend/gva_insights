@@ -1,38 +1,43 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 if (!isset($_SESSION['user_id'])) {
-    header('Location: ../index.php');
+    header('Location: ../../index.php');
     exit;
 }
 
-include '../includes/config.php';
-include '../includes/db_connect.php';
+include '../../includes/config.php';
+include '../../includes/db_connect.php';
 mysqli_set_charset($conn, 'utf8mb4');
 
-// ---------- KPIs ----------
+$userId   = (int)$_SESSION['user_id'];
+$isAdmin  = isset($_SESSION['perfil']) && $_SESSION['perfil'] === 'admin';
+
+// ---------- KPIs do responsável logado ----------
 $kpi = [];
-$res = $conn->query("SELECT status, COUNT(*) AS total FROM bdna_tarefas GROUP BY status");
-while ($row = $res->fetch_assoc()) {
-    $kpi[$row['status']] = (int)$row['total'];
-}
+$sqlKpi = $isAdmin
+    ? "SELECT status, COUNT(*) AS total FROM bdna_tarefas GROUP BY status"
+    : "SELECT status, COUNT(*) AS total FROM bdna_tarefas WHERE id_usuario = $userId GROUP BY status";
+$resKpi = $conn->query($sqlKpi);
+while ($row = $resKpi->fetch_assoc()) { $kpi[$row['status']] = (int)$row['total']; }
 $totalGeral = array_sum($kpi);
 $totalDone  = ($kpi['Done'] ?? 0) + ($kpi['Enviado'] ?? 0) + ($kpi['Publicado'] ?? 0);
 $totalProg  = ($kpi['Em andamento'] ?? 0) + ($kpi['Produzindo'] ?? 0);
-$totalAtras = $conn->query("SELECT COUNT(*) AS c FROM bdna_tarefas WHERE deadline < CURDATE() AND status NOT IN ('Done','Enviado','Publicado')")->fetch_assoc()['c'];
+$whereAtras = $isAdmin ? "" : "AND id_usuario = $userId";
+$totalAtras = $conn->query("SELECT COUNT(*) AS c FROM bdna_tarefas WHERE deadline < CURDATE() AND status NOT IN ('Done','Enviado','Publicado') $whereAtras")->fetch_assoc()['c'];
 
 // ---------- Filtros ----------
 $filtCat    = intval($_GET['cat']    ?? 0);
 $filtStatus = $_GET['status']        ?? '';
-$filtResp   = intval($_GET['resp']   ?? 0);
 $filtMes    = $_GET['mes']           ?? '';
 $filtPri    = $_GET['pri']           ?? '';
+$filtResp   = $isAdmin ? intval($_GET['resp'] ?? 0) : $userId;
 
-$where = ['1=1'];
+$where = $isAdmin ? ['1=1'] : ["t.id_usuario = $userId"];
 if ($filtCat)    $where[] = "t.id_categoria = " . $filtCat;
 if ($filtStatus) $where[] = "t.status = '" . $conn->real_escape_string($filtStatus) . "'";
-if ($filtResp)   $where[] = "t.id_usuario = " . $filtResp;
 if ($filtMes)    $where[] = "t.mes_referencia = '" . $conn->real_escape_string($filtMes) . "'";
 if ($filtPri)    $where[] = "t.prioridade = '" . $conn->real_escape_string($filtPri) . "'";
+if ($isAdmin && $filtResp) $where[] = "t.id_usuario = " . $filtResp;
 
 $whereSQL = implode(' AND ', $where);
 
@@ -44,33 +49,33 @@ $sql = "SELECT t.*, u.nome AS responsavel, c.nome AS cat_nome, c.cor_hex
         ORDER BY
           CASE t.prioridade WHEN 'Alta' THEN 1 WHEN 'Media' THEN 2 ELSE 3 END,
           t.deadline ASC, t.id DESC";
-
 $tarefas = $conn->query($sql);
 
-// Listas para filtros
-$categorias = $conn->query('SELECT id, nome FROM bdna_categorias WHERE ativo=1 ORDER BY ordem');
-$responsaveis = $conn->query('SELECT id, nome FROM usuarios WHERE ativo=1 ORDER BY nome');
-$meses = ['Janeiro','Fevereiro','Marco','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro'];
+$categorias   = $conn->query('SELECT id, nome, cor_hex FROM bdna_categorias WHERE ativo=1 ORDER BY ordem');
+$responsaveis = $isAdmin ? $conn->query('SELECT id, nome FROM usuarios WHERE ativo=1 ORDER BY nome') : null;
+$meses        = ['Janeiro','Fevereiro','Marco','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro'];
+$nomeUsuario  = $_SESSION['nome'] ?? 'Usuário';
 
 $conn->close();
 ?>
-<?php include '../pages/header.php'; ?>
-<link rel="stylesheet" href="../brasil_dna/assets/brasil_dna.css">
+<?php include '../../pages/header.php'; ?>
+<link rel="stylesheet" href="../../brasil_dna/assets/brasil_dna.css">
+<link rel="stylesheet" href="assets/demandas.css">
 
 <body class="bdna-page">
 <div class="bdna-wrapper">
-  <?php include '../pages/menu_lateral.php'; ?>
+  <?php include '../../pages/menu_lateral.php'; ?>
 
   <main class="bdna-main">
 
     <!-- ===== Cabeçalho ===== -->
     <div class="bdna-page-header">
       <h1 class="bdna-page-title">
-        <span class="bdna-flag">🇧🇷</span>
-        Brasil DNA 2026 — Controle de Tarefas
+        <span class="bdna-flag">📋</span>
+        <?= $isAdmin ? 'Demandas — Visão Geral' : 'Minhas Demandas — ' . htmlspecialchars($nomeUsuario) ?>
       </h1>
-      <a href="forms/registrar_tarefa.php" class="bdna-btn bdna-btn-primary">
-        <i class="bi bi-plus-lg"></i> Nova Tarefa
+      <a href="forms/nova_demanda.php" class="bdna-btn bdna-btn-primary">
+        <i class="bi bi-plus-lg"></i> Nova Demanda
       </a>
     </div>
 
@@ -108,10 +113,7 @@ $conn->close();
         <label>Categoria</label>
         <select name="cat" onchange="applyFilters(this)" data-param="cat">
           <option value="">Todas</option>
-          <?php
-          mysqli_data_seek($categorias, 0);
-          while ($c = $categorias->fetch_assoc()):
-          ?>
+          <?php mysqli_data_seek($categorias, 0); while ($c = $categorias->fetch_assoc()): ?>
           <option value="<?= $c['id'] ?>" <?= $filtCat == $c['id'] ? 'selected' : '' ?>>
             <?= htmlspecialchars($c['nome']) ?>
           </option>
@@ -124,32 +126,31 @@ $conn->close();
         <select name="status" onchange="applyFilters(this)" data-param="status">
           <option value="">Todos</option>
           <?php foreach (['Pendente','Em andamento','Produzindo','Aguardando','Enviado','Publicado','Done'] as $s): ?>
-          <option value="<?= $s ?>" <?= $filtStatus == $s ? 'selected' : '' ?>><?= $s ?></option>
+          <option value="<?= $s ?>" <?= $filtStatus === $s ? 'selected' : '' ?>><?= $s ?></option>
           <?php endforeach; ?>
         </select>
       </div>
 
+      <?php if ($isAdmin && $responsaveis): ?>
       <div class="filter-group">
         <label>Responsável</label>
         <select name="resp" onchange="applyFilters(this)" data-param="resp">
           <option value="">Todos</option>
-          <?php
-          mysqli_data_seek($responsaveis, 0);
-          while ($u = $responsaveis->fetch_assoc()):
-          ?>
+          <?php mysqli_data_seek($responsaveis, 0); while ($u = $responsaveis->fetch_assoc()): ?>
           <option value="<?= $u['id'] ?>" <?= $filtResp == $u['id'] ? 'selected' : '' ?>>
             <?= htmlspecialchars($u['nome']) ?>
           </option>
           <?php endwhile; ?>
         </select>
       </div>
+      <?php endif; ?>
 
       <div class="filter-group">
         <label>Mês</label>
         <select name="mes" onchange="applyFilters(this)" data-param="mes">
           <option value="">Todos</option>
           <?php foreach ($meses as $m): ?>
-          <option value="<?= $m ?>" <?= $filtMes == $m ? 'selected' : '' ?>><?= $m ?></option>
+          <option value="<?= $m ?>" <?= $filtMes === $m ? 'selected' : '' ?>><?= $m ?></option>
           <?php endforeach; ?>
         </select>
       </div>
@@ -158,9 +159,9 @@ $conn->close();
         <label>Prioridade</label>
         <select name="pri" onchange="applyFilters(this)" data-param="pri">
           <option value="">Todas</option>
-          <option value="Alta"  <?= $filtPri=='Alta'  ? 'selected':'' ?>>Alta</option>
-          <option value="Media" <?= $filtPri=='Media' ? 'selected':'' ?>>Média</option>
-          <option value="Baixa" <?= $filtPri=='Baixa' ? 'selected':'' ?>>Baixa</option>
+          <option value="Alta"  <?= $filtPri==='Alta'  ? 'selected':'' ?>>Alta</option>
+          <option value="Media" <?= $filtPri==='Media' ? 'selected':'' ?>>Média</option>
+          <option value="Baixa" <?= $filtPri==='Baixa' ? 'selected':'' ?>>Baixa</option>
         </select>
       </div>
 
@@ -177,9 +178,9 @@ $conn->close();
       <table class="bdna-table">
         <thead>
           <tr>
-            <th>Tarefa</th>
+            <th>Demanda / Tarefa</th>
             <th>Categoria</th>
-            <th>Responsável</th>
+            <?php if ($isAdmin): ?><th>Responsável</th><?php endif; ?>
             <th>Mês</th>
             <th>Deadline</th>
             <th>Prioridade</th>
@@ -189,20 +190,23 @@ $conn->close();
         </thead>
         <tbody>
           <?php while ($t = $tarefas->fetch_assoc()):
-            $hoje = date('Y-m-d');
+            $hoje     = date('Y-m-d');
             $atrasado = $t['deadline'] && $t['deadline'] < $hoje && !in_array($t['status'], ['Done','Enviado','Publicado']);
-            $dHoje = $t['deadline'] && $t['deadline'] == $hoje;
+            $dHoje    = $t['deadline'] && $t['deadline'] === $hoje;
             $statusClass = 'status-' . strtolower(str_replace(' ', '_', $t['status']));
-            $priClass = 'pri-' . strtolower($t['prioridade']);
-            $iniciais = mb_strtoupper(mb_substr($t['responsavel'], 0, 1) . (strpos($t['responsavel'], ' ') !== false ? mb_substr(strrchr($t['responsavel'], ' '), 1, 1) : ''));
+            $priClass    = 'pri-' . strtolower($t['prioridade']);
+            $iniciais    = mb_strtoupper(mb_substr($t['responsavel'], 0, 1) . (strpos($t['responsavel'], ' ') !== false ? mb_substr(strrchr($t['responsavel'], ' '), 1, 1) : ''));
           ?>
           <tr>
             <td class="bdna-task-name">
               <?= htmlspecialchars($t['tarefa']) ?>
               <?php if ($t['acao']): ?>
-                <small><?= htmlspecialchars($t['acao']) ?></small>
+                <small><i class="bi bi-tag"></i> <?= htmlspecialchars($t['acao']) ?></small>
               <?php elseif ($t['tema_conteudo']): ?>
-                <small><?= htmlspecialchars($t['tema_conteudo']) ?></small>
+                <small><i class="bi bi-file-text"></i> <?= htmlspecialchars($t['tema_conteudo']) ?></small>
+              <?php endif; ?>
+              <?php if ($t['link_externo']): ?>
+                <small><a href="<?= htmlspecialchars($t['link_externo']) ?>" target="_blank"><i class="bi bi-link-45deg"></i> Ver link</a></small>
               <?php endif; ?>
             </td>
             <td>
@@ -210,12 +214,14 @@ $conn->close();
                 <?= htmlspecialchars($t['cat_nome']) ?>
               </span>
             </td>
+            <?php if ($isAdmin): ?>
             <td>
               <div class="bdna-user-cell">
                 <span class="bdna-avatar"><?= $iniciais ?></span>
                 <?= htmlspecialchars(explode(' ', $t['responsavel'])[0]) ?>
               </div>
             </td>
+            <?php endif; ?>
             <td><?= htmlspecialchars($t['mes_referencia'] ?? '—') ?></td>
             <td>
               <?php if ($t['deadline']): ?>
@@ -233,17 +239,17 @@ $conn->close();
                       onchange="updateStatus(<?= $t['id'] ?>, this)"
                       title="Alterar status">
                 <?php foreach (['Pendente','Em andamento','Produzindo','Aguardando','Enviado','Publicado','Done'] as $s): ?>
-                  <option value="<?= $s ?>" <?= $t['status'] == $s ? 'selected' : '' ?>><?= $s ?></option>
+                  <option value="<?= $s ?>" <?= $t['status'] === $s ? 'selected' : '' ?>><?= $s ?></option>
                 <?php endforeach; ?>
               </select>
             </td>
             <td>
               <div class="bdna-actions">
-                <a href="forms/edit_tarefa.php?id=<?= $t['id'] ?>" class="bdna-btn-icon" title="Editar">
+                <a href="forms/editar_demanda.php?id=<?= $t['id'] ?>" class="bdna-btn-icon" title="Editar">
                   <i class="bi bi-pencil"></i>
                 </a>
-                <a href="forms/deletar_tarefa.php?id=<?= $t['id'] ?>" class="bdna-btn-icon del"
-                   title="Excluir" onclick="return confirm('Excluir esta tarefa?')">
+                <a href="forms/deletar_demanda.php?id=<?= $t['id'] ?>" class="bdna-btn-icon del"
+                   title="Excluir" onclick="return confirm('Excluir esta demanda?')">
                   <i class="bi bi-trash"></i>
                 </a>
               </div>
@@ -254,8 +260,8 @@ $conn->close();
       </table>
       <?php else: ?>
       <div class="bdna-empty">
-        <i class="bi bi-check2-square"></i>
-        <p>Nenhuma tarefa encontrada.<br>Clique em <strong>Nova Tarefa</strong> para começar.</p>
+        <i class="bi bi-inbox"></i>
+        <p>Nenhuma demanda encontrada.<br>Clique em <strong>Nova Demanda</strong> para começar.</p>
       </div>
       <?php endif; ?>
     </div>
@@ -263,12 +269,10 @@ $conn->close();
   </main>
 </div>
 
-<!-- Toast -->
 <div class="bdna-toast" id="bdnaToast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-// Aplicar filtros mantendo os outros params
 function applyFilters(el) {
   const params = new URLSearchParams(window.location.search);
   const val = el.options[el.selectedIndex].value;
@@ -277,10 +281,9 @@ function applyFilters(el) {
   window.location.href = 'index.php?' + params.toString();
 }
 
-// Atualizar status via AJAX
 function updateStatus(id, el) {
   const status = el.value;
-  fetch('../brasil_dna/forms/update_status.php', {
+  fetch('forms/update_status_demanda.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: 'id=' + id + '&status=' + encodeURIComponent(status)
@@ -289,7 +292,6 @@ function updateStatus(id, el) {
   .then(data => {
     showToast(data.ok ? '✓ Status atualizado' : '✗ Erro ao atualizar', data.ok ? 'success' : 'error');
     if (data.ok) {
-      // Atualizar classe do badge
       const cls = 'status-' + status.toLowerCase().replace(/ /g, '_');
       el.className = 'bdna-badge bdna-status-select ' + cls;
     }
@@ -303,13 +305,12 @@ function showToast(msg, type = '') {
   setTimeout(() => t.className = 'bdna-toast', 2800);
 }
 
-// Feedback de URL
 const urlP = new URLSearchParams(window.location.search);
-if (urlP.get('ok') === '1')  showToast('✓ Tarefa salva com sucesso!', 'success');
-if (urlP.get('ok') === 'del') showToast('✓ Tarefa excluída.', 'success');
-if (urlP.get('ok') === 'edit') showToast('✓ Tarefa atualizada!', 'success');
+if (urlP.get('ok') === '1')    showToast('✓ Demanda salva com sucesso!', 'success');
+if (urlP.get('ok') === 'del')  showToast('✓ Demanda excluída.', 'success');
+if (urlP.get('ok') === 'edit') showToast('✓ Demanda atualizada!', 'success');
 </script>
 
-<?php include '../pages/footer.php'; ?>
+<?php include '../../pages/footer.php'; ?>
 </body>
 </html>

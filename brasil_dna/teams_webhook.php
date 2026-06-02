@@ -61,7 +61,7 @@ function notificarTeams(array $dados): bool {
                 ? date('d/m/Y', strtotime($dados['deadline']))
                 : 'Não definido';
 
-    $descCal = "Tarefa Brasil DNA 2026\nCategoria: " . ($dados['categoria'] ?? '') . "\nResponsável: " . ($dados['responsavel'] ?? '') . "\nPrioridade: " . ($dados['prioridade'] ?? '') . "\nSistema: " . ($dados['link_sistema'] ?? '');
+    $descCal  = 'Tarefa Brasil DNA 2026\nCategoria: ' . ($dados['categoria'] ?? '') . '\nResponsável: ' . ($dados['responsavel'] ?? '') . '\nPrioridade: ' . ($dados['prioridade'] ?? '') . '\nSistema: ' . ($dados['link_sistema'] ?? '');
     $calLink  = _outlookCalendarLink('Brasil DNA 2026: ' . $dados['tarefa'], $dados['deadline'] ?? '', $descCal);
 
     $actions = [[
@@ -143,7 +143,7 @@ function notificarTeamsChat(array $dados): bool {
                 ? date('d/m/Y', strtotime($dados['deadline']))
                 : 'Não definido';
 
-    $descCal = "Tarefa Brasil DNA 2026\nCategoria: " . ($dados['categoria'] ?? '') . "\nPrioridade: " . ($dados['prioridade'] ?? '') . "\nSistema: " . ($dados['link_sistema'] ?? '');
+    $descCal = 'Tarefa Brasil DNA 2026\nCategoria: ' . ($dados['categoria'] ?? '') . '\nPrioridade: ' . ($dados['prioridade'] ?? '') . '\nSistema: ' . ($dados['link_sistema'] ?? '');
     $calLink = _outlookCalendarLink('Brasil DNA 2026: ' . $dados['tarefa'], $dados['deadline'] ?? '', $descCal);
 
     $actions = [[
