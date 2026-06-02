@@ -6,7 +6,6 @@ require_once '../../includes/db_connect.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: ../index.php'); exit; }
 
 $userId        = usuario_id();
-$nivel         = usuario_nivel();
 $isAdmin       = is_admin();
 $podeGerenciar = can_manage_registros();
 
@@ -16,27 +15,26 @@ $categoria      = trim($_POST['categoria']      ?? '');
 $mes            = trim($_POST['mes']            ?? '');
 $acao           = trim($_POST['acao']           ?? '');
 $tarefa         = trim($_POST['tarefa']         ?? '');
-$deadline       = !empty($_POST['deadline'])       ? $_POST['deadline']        : null;
+$deadline       = !empty($_POST['deadline'])           ? $_POST['deadline']           : null;
 $detalhes       = trim($_POST['detalhes']       ?? '');
 $tipoConteudo   = trim($_POST['tipo_conteudo']  ?? '');
 $linkExterno    = trim($_POST['link_externo']   ?? '');
 $status         = trim($_POST['status']         ?? 'Pendente');
-$prioridade     = trim($_POST['prioridade']     ?? 'Média');
+$prioridade     = trim($_POST['prioridade']     ?? 'Media');
 $dataPublicacao = !empty($_POST['data_publicacao']) ? $_POST['data_publicacao'] : null;
 
-// Arrays de relação (IDs inteiros, pode vir vazio se nenhum chip marcado)
 $empresas_envolvidas = array_map('intval', $_POST['empresas_envolvidas'] ?? []);
 $clientes_envolvidos = array_map('intval', $_POST['clientes_envolvidos'] ?? []);
 
-// ── Verifica permissão: nível 3 só pode atualizar suas próprias demandas ────────
+// ── Verifica permissão ────────────────────────────────────────────────
 if (!$podeGerenciar) {
-    $stmtCheck = $conn->prepare("SELECT id, status FROM demandas WHERE id = ? AND id_usuario = ?");
+    $stmtCheck = $conn->prepare("SELECT id FROM demandas WHERE id = ? AND id_usuario = ?");
     $stmtCheck->bind_param('ii', $id, $userId);
     $stmtCheck->execute();
     $stmtCheck->store_result();
     if ($stmtCheck->num_rows === 0) { header('Location: ../index.php'); exit; }
     $stmtCheck->close();
-    $idUsuario = $userId; // nível 3 não pode trocar o responsável
+    $idUsuario = $userId;
 } else {
     $stmtCheck = $conn->prepare("SELECT id FROM demandas WHERE id = ?");
     $stmtCheck->bind_param('i', $id);
@@ -54,8 +52,12 @@ $oldData   = $stmtOld->get_result()->fetch_assoc();
 $stmtOld->close();
 $oldStatus = $oldData['status'] ?? '';
 
-// ── UPDATE principal (tabela demandas) ──────────────────────────────
-$sql  = "UPDATE demandas SET
+// ── UPDATE principal ──────────────────────────────────────────────────
+// Campos: id_usuario(i), categoria(s), mes(s), acao(s), tarefa(s),
+//         deadline(s), detalhes(s), tipo_conteudo(s), link_externo(s),
+//         status(s), prioridade(s), data_publicacao(s), id(i)
+// Total: 13 parâmetros → tipos: 'isssssssssssi'
+$sql = "UPDATE demandas SET
             id_usuario      = ?,
             categoria       = ?,
             mes             = ?,
@@ -70,11 +72,22 @@ $sql  = "UPDATE demandas SET
             data_publicacao = ?,
             updated_at      = NOW()
          WHERE id = ?";
+
 $stmt = $conn->prepare($sql);
-$stmt->bind_param('issssssssssi',
-    $idUsuario, $categoria, $mes, $acao, $tarefa,
-    $deadline, $detalhes, $tipoConteudo,
-    $linkExterno, $status, $prioridade, $dataPublicacao, $id
+$stmt->bind_param('isssssssssssi',
+    $idUsuario,     // i
+    $categoria,     // s
+    $mes,           // s
+    $acao,          // s
+    $tarefa,        // s
+    $deadline,      // s (DATE ou NULL)
+    $detalhes,      // s
+    $tipoConteudo,  // s
+    $linkExterno,   // s
+    $status,        // s
+    $prioridade,    // s
+    $dataPublicacao,// s (DATE ou NULL)
+    $id             // i
 );
 
 if ($stmt->execute()) {
@@ -87,15 +100,14 @@ if ($stmt->execute()) {
         $stmtH->close();
     }
 
-    // ── Sincroniza empresas: apaga tudo e reinclui marcados ────────────────
-    $conn->prepare("DELETE FROM demandas_empresas WHERE iddemanda = ?")->bind_param('i', $id) | null;
-    $stmtDel = $conn->prepare("DELETE FROM demandas_empresas WHERE iddemanda = ?");
+    // ── Sincroniza empresas ────────────────────────────────────────────
+    $stmtDel = $conn->prepare("DELETE FROM demandas_empresas WHERE id_demanda = ?");
     $stmtDel->bind_param('i', $id);
     $stmtDel->execute();
     $stmtDel->close();
 
     if (!empty($empresas_envolvidas)) {
-        $stmtEmp = $conn->prepare("INSERT IGNORE INTO demandas_empresas (iddemanda, idempresa) VALUES (?, ?)");
+        $stmtEmp = $conn->prepare("INSERT IGNORE INTO demandas_empresas (id_demanda, id_empresa) VALUES (?, ?)");
         foreach ($empresas_envolvidas as $idEmpresa) {
             if ($idEmpresa > 0) {
                 $stmtEmp->bind_param('ii', $id, $idEmpresa);
@@ -105,14 +117,14 @@ if ($stmt->execute()) {
         $stmtEmp->close();
     }
 
-    // ── Sincroniza clientes: apaga tudo e reinclui marcados ────────────────
-    $stmtDel2 = $conn->prepare("DELETE FROM demandas_clientes WHERE iddemanda = ?");
+    // ── Sincroniza clientes ────────────────────────────────────────────
+    $stmtDel2 = $conn->prepare("DELETE FROM demandas_clientes WHERE id_demanda = ?");
     $stmtDel2->bind_param('i', $id);
     $stmtDel2->execute();
     $stmtDel2->close();
 
     if (!empty($clientes_envolvidos)) {
-        $stmtCli = $conn->prepare("INSERT IGNORE INTO demandas_clientes (iddemanda, idcliente) VALUES (?, ?)");
+        $stmtCli = $conn->prepare("INSERT IGNORE INTO demandas_clientes (id_demanda, id_cliente) VALUES (?, ?)");
         foreach ($clientes_envolvidos as $idCliente) {
             if ($idCliente > 0) {
                 $stmtCli->bind_param('ii', $id, $idCliente);
@@ -129,5 +141,6 @@ if ($stmt->execute()) {
 }
 
 $stmt->close();
+$conn->close();
 header('Location: ../index.php');
 exit;
