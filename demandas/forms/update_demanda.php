@@ -13,7 +13,7 @@ $categoria      = trim($_POST['categoria']      ?? '');
 $mes            = trim($_POST['mes']            ?? '');
 $acao           = trim($_POST['acao']           ?? '');
 $tarefa         = trim($_POST['tarefa']         ?? '');
-$deadline       = !empty($_POST['deadline'])           ? $_POST['deadline']       : null;
+$deadline       = !empty($_POST['deadline'])        ? $_POST['deadline']        : null;
 $detalhes       = trim($_POST['detalhes']       ?? '');
 $tipoConteudo   = trim($_POST['tipo_conteudo']  ?? '');
 $linkExterno    = trim($_POST['link_externo']   ?? '');
@@ -26,8 +26,8 @@ $clientes_envolvidos = array_map('intval', $_POST['clientes_envolvidos'] ?? []);
 
 if (!$id) { header('Location: ../index.php'); exit; }
 
-// ── Busca demanda e valida permissão via auth.php ───────────────────
-$stmtD = $conn->prepare("SELECT id_usuario FROM demandas WHERE id = ?");
+// ── Busca demanda (id_usuario + status) numa única query ─────────────
+$stmtD = $conn->prepare("SELECT id_usuario, status FROM demandas WHERE id = ?");
 $stmtD->bind_param('i', $id);
 $stmtD->execute();
 $rowD = $stmtD->get_result()->fetch_assoc();
@@ -35,17 +35,22 @@ $stmtD->close();
 
 if (!$rowD) { header('Location: ../index.php'); exit; }
 
-// pode_editar_tarefa(): Nível 1 e 2 = true sempre; Nível 3 = true só se for o responsável
+// ── Verifica permissão via auth.php ──────────────────────────────────
+// Nível 1 (admin) e Nível 2 (operacional) podem editar qualquer demanda
 if (!pode_editar_tarefa((int)$rowD['id_usuario'])) {
     $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Você não tem permissão para editar esta demanda.'];
     header('Location: ../index.php');
     exit;
 }
 
-// id_usuario: admin pode trocar responsável; outros mantêm o original
-$idUsuario = $isAdmin ? (int)($_POST['id_usuario'] ?? $rowD['id_usuario']) : (int)$rowD['id_usuario'];
+// Somente admin pode trocar o responsável; demais mantêm o original do banco
+$idUsuario = $isAdmin
+    ? (int)($_POST['id_usuario'] ?? $rowD['id_usuario'])
+    : (int)$rowD['id_usuario'];
 
-// ── Validação de categoria ─────────────────────────────────────────
+$oldStatus = $rowD['status'] ?? '';
+
+// ── Validações ────────────────────────────────────────────────────────
 $categoriasValidas = [
     'Gestão & Planejamento › Cronograma',
     'Gestão & Planejamento › Locais',
@@ -88,14 +93,6 @@ if (!empty($categoria) && !in_array($categoria, $categoriasValidas)) {
     exit;
 }
 
-// ── Busca status anterior para histórico ─────────────────────────────
-$stmtOld = $conn->prepare("SELECT status FROM demandas WHERE id = ?");
-$stmtOld->bind_param('i', $id);
-$stmtOld->execute();
-$oldData   = $stmtOld->get_result()->fetch_assoc();
-$stmtOld->close();
-$oldStatus = $oldData['status'] ?? '';
-
 // ── UPDATE principal ──────────────────────────────────────────────────
 $sql = "UPDATE demandas SET
             id_usuario      = ?,
@@ -130,7 +127,7 @@ if ($stmt->execute()) {
         $stmtH->close();
     }
 
-    // ── Sincroniza empresas ────────────────────────────────────────────
+    // ── Sincroniza empresas ───────────────────────────────────────────
     $stmtDel = $conn->prepare("DELETE FROM demandas_empresas WHERE id_demanda = ?");
     $stmtDel->bind_param('i', $id);
     $stmtDel->execute();
@@ -147,7 +144,7 @@ if ($stmt->execute()) {
         $stmtEmp->close();
     }
 
-    // ── Sincroniza clientes ────────────────────────────────────────────
+    // ── Sincroniza clientes ───────────────────────────────────────────
     $stmtDel2 = $conn->prepare("DELETE FROM demandas_clientes WHERE id_demanda = ?");
     $stmtDel2->bind_param('i', $id);
     $stmtDel2->execute();
