@@ -4,9 +4,9 @@ require_login();
 can_manage_registros() || (http_response_code(403) && exit('Acesso negado. Apenas níveis 1 e 2 podem criar demandas.'));
 require_once '../../includes/db_connect.php';
 
-$userId  = usuario_id();
+$userId   = usuario_id();
 $userNome = usuario_nome();
-$isAdmin = is_admin();
+$isAdmin  = is_admin();
 
 // Lista de usuários (nível 1 pode cadastrar para qualquer um)
 $usuarios = [];
@@ -24,15 +24,38 @@ $clientes = [];
 $resCli = $conn->query("SELECT id, company FROM clientes ORDER BY company ASC");
 while ($c = $resCli->fetch_assoc()) $clientes[] = $c;
 
+// Categorias com subcategorias
 $categorias = [
-    'Gestão & Planejamento',
-    'Videos Promo',
-    'Webinars',
-    'News & Releases',
-    'Posts SoMe',
-    'Roadshow Presencial',
-    'Roadshow Virtual / Eventos Especiais'
+    'Gestão & Planejamento' => [
+        'Cronograma',
+        'Locais',
+        'Metas (clientes, marcas, números de pessoas)',
+    ],
+    'Comunicação' => [
+        'Releases Brasil',
+        'Releases EUA',
+        'Vídeos promocionais',
+        'Newsletter',
+        'Redes Sociais',
+        'Plataforma',
+    ],
+    'Documentação' => [
+        'Contratos',
+        'Invoice',
+        'Acordos',
+        'Clientes',
+        'Parceiros',
+        'Fornecedores',
+    ],
+    'Organização e Execução' => [
+        'Webinars',
+        'Roadshow Presencial',
+        'Roadshow Virtual',
+        'Eventos Especiais',
+    ],
+    'Relatórios' => [],
 ];
+
 $meses = [
     'Janeiro','Fevereiro','Março','Abril','Maio','Junho',
     'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'
@@ -49,7 +72,6 @@ $statusOpcoes = ['Pendente','Em andamento','Produzindo','Enviado','Publicado','A
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="stylesheet" href="../assets/demandas.css">
     <style>
-        /* ── Chips de seleção múltipla ── */
         .chip-select-group {
             display: flex;
             flex-wrap: wrap;
@@ -107,6 +129,16 @@ $statusOpcoes = ['Pendente','Em andamento','Produzindo','Enviado','Publicado','A
             color: #6c757d;
             margin-bottom: 2px;
         }
+        /* Estilo para optgroup no select de categorias */
+        #selectCategoria optgroup {
+            font-weight: 700;
+            color: #343a40;
+        }
+        #selectCategoria option {
+            font-weight: 400;
+            padding-left: 8px;
+            color: #495057;
+        }
     </style>
 </head>
 <body>
@@ -163,13 +195,21 @@ $statusOpcoes = ['Pendente','Em andamento','Produzindo','Enviado','Publicado','A
                             </div>
                             <?php endif; ?>
 
-                            <!-- Categoria -->
+                            <!-- Categoria + Subcategoria -->
                             <div class="col-md-4">
                                 <label class="form-label fw-semibold">Categoria <span class="text-danger">*</span></label>
                                 <select name="categoria" id="selectCategoria" class="form-select" required>
                                     <option value="">Selecione...</option>
-                                    <?php foreach ($categorias as $cat): ?>
-                                    <option value="<?= $cat ?>"><?= $cat ?></option>
+                                    <?php foreach ($categorias as $grupo => $subs): ?>
+                                        <?php if (empty($subs)): ?>
+                                            <option value="<?= htmlspecialchars($grupo) ?>"><?= htmlspecialchars($grupo) ?></option>
+                                        <?php else: ?>
+                                            <optgroup label="<?= htmlspecialchars($grupo) ?>">
+                                                <?php foreach ($subs as $sub): ?>
+                                                <option value="<?= htmlspecialchars($grupo . ' › ' . $sub) ?>"><?= htmlspecialchars($sub) ?></option>
+                                                <?php endforeach; ?>
+                                            </optgroup>
+                                        <?php endif; ?>
                                     <?php endforeach; ?>
                                 </select>
                             </div>
@@ -183,12 +223,6 @@ $statusOpcoes = ['Pendente','Em andamento','Produzindo','Enviado','Publicado','A
                                     <option value="<?= $m ?>"><?= $m ?></option>
                                     <?php endforeach; ?>
                                 </select>
-                            </div>
-
-                            <!-- Ação (campo dinâmico) -->
-                            <div class="col-md-4 campo-acao d-none">
-                                <label class="form-label fw-semibold">Ação / Área</label>
-                                <input type="text" name="acao" class="form-control" placeholder="Ex: Parcerias, Contratos, Estratégia...">
                             </div>
 
                             <!-- Tarefa -->
@@ -230,7 +264,7 @@ $statusOpcoes = ['Pendente','Em andamento','Produzindo','Enviado','Publicado','A
                                 </select>
                             </div>
 
-                            <!-- ── EMPRESAS ENVOLVIDAS ── -->
+                            <!-- EMPRESAS ENVOLVIDAS -->
                             <div class="col-md-12">
                                 <div class="chip-label-section mb-1"><i class="bi bi-building me-1"></i>Empresas Envolvidas</div>
                                 <div class="chip-select-group">
@@ -247,7 +281,7 @@ $statusOpcoes = ['Pendente','Em andamento','Produzindo','Enviado','Publicado','A
                                 </div>
                             </div>
 
-                            <!-- ── CLIENTES ENVOLVIDOS ── -->
+                            <!-- CLIENTES ENVOLVIDOS -->
                             <div class="col-md-12">
                                 <div class="chip-label-section mb-1"><i class="bi bi-person-badge me-1"></i>Clientes Envolvidos</div>
                                 <div class="chip-select-group">
@@ -296,15 +330,14 @@ $statusOpcoes = ['Pendente','Em andamento','Produzindo','Enviado','Publicado','A
 <?php include '../../pages/footer.php'; ?>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-const categoriasComAcao     = ['Gestão & Planejamento','Roadshow Presencial','Roadshow Virtual / Eventos Especiais'];
-const categoriasComConteudo = ['Videos Promo','Webinars','News & Releases','Posts SoMe'];
-const categoriasComLink     = ['Videos Promo','Webinars','News & Releases','Posts SoMe'];
+// Categorias que exibem campo Tema/Conteúdo e Link
+const CAT_CONTEUDO = ['Comunicação › Vídeos promocionais','Comunicação › Newsletter','Comunicação › Redes Sociais','Comunicação › Plataforma','Comunicação › Releases Brasil','Comunicação › Releases EUA'];
+const CAT_LINK     = [...CAT_CONTEUDO];
 
 document.getElementById('selectCategoria').addEventListener('change', function () {
     const cat = this.value;
-    document.querySelectorAll('.campo-acao').forEach(el     => el.classList.toggle('d-none', !categoriasComAcao.includes(cat)));
-    document.querySelectorAll('.campo-conteudo').forEach(el => el.classList.toggle('d-none', !categoriasComConteudo.includes(cat)));
-    document.querySelectorAll('.campo-link').forEach(el     => el.classList.toggle('d-none', !categoriasComLink.includes(cat)));
+    document.querySelectorAll('.campo-conteudo').forEach(el => el.classList.toggle('d-none', !CAT_CONTEUDO.includes(cat)));
+    document.querySelectorAll('.campo-link').forEach(el     => el.classList.toggle('d-none', !CAT_LINK.includes(cat)));
 });
 </script>
 </body>
