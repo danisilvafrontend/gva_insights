@@ -53,13 +53,30 @@ $sql = "SELECT d.*, u.nome AS responsavel_nome
         ORDER BY d.created_at DESC";
 
 $stmt = $conn->prepare($sql);
-if ($params) {
-    $stmt->bind_param($types, ...$params);
-}
+if ($params) { $stmt->bind_param($types, ...$params); }
 $stmt->execute();
-$result   = $stmt->get_result();
-$demandas = $result->fetch_all(MYSQLI_ASSOC);
+$demandas = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
+
+// ── Busca todas as subtarefas das demandas listadas ───────────────────
+$subtarefasPorDemanda = [];
+if (!empty($demandas)) {
+    $ids = implode(',', array_column($demandas, 'id'));
+
+    // Nível 2 vê apenas subtarefas atribuídas a ele
+    $subWhere = $isAdmin ? '' : "AND s.id_usuario = $userId";
+
+    $sqlSub = "SELECT s.*, u.nome AS responsavel_nome
+               FROM subtarefas s
+               JOIN usuarios u ON s.id_usuario = u.id
+               WHERE s.id_demanda IN ($ids) $subWhere
+               ORDER BY s.created_at ASC";
+
+    $resSub = $conn->query($sqlSub);
+    while ($sub = $resSub->fetch_assoc()) {
+        $subtarefasPorDemanda[(int)$sub['id_demanda']][] = $sub;
+    }
+}
 
 // KPIs
 $kpiWhere  = !$isAdmin ? "WHERE id_usuario = $userId" : '';
@@ -70,43 +87,18 @@ while ($k = $kpiResult->fetch_assoc()) {
     $kpis['total']     += (int)$k['total'];
 }
 
-// Lista usuários para o filtro de responsável (somente admin)
 $usuarios = [];
 if ($isAdmin) {
     $resU = $conn->query("SELECT id, nome FROM usuarios ORDER BY nome");
     while ($u = $resU->fetch_assoc()) $usuarios[] = $u;
 }
 
-// Categorias e subcategorias
 $categorias = [
-    'Gestão & Planejamento' => [
-        'Cronograma',
-        'Locais',
-        'Metas (clientes, marcas, números de pessoas)',
-    ],
-    'Comunicação' => [
-        'Releases Brasil',
-        'Releases EUA',
-        'Vídeos promocionais',
-        'Newsletter',
-        'Redes Sociais',
-        'Plataforma',
-    ],
-    'Documentação' => [
-        'Contratos',
-        'Invoice',
-        'Acordos',
-        'Clientes',
-        'Parceiros',
-        'Fornecedores',
-    ],
-    'Organização e Execução' => [
-        'Webinars',
-        'Roadshow Presencial',
-        'Roadshow Virtual',
-        'Eventos Especiais',
-    ],
-    'Relatórios' => [],
+    'Gestão & Planejamento' => ['Cronograma','Locais','Metas (clientes, marcas, números de pessoas)'],
+    'Comunicação'           => ['Releases Brasil','Releases EUA','Vídeos promocionais','Newsletter','Redes Sociais','Plataforma'],
+    'Documentação'          => ['Contratos','Invoice','Acordos','Clientes','Parceiros','Fornecedores'],
+    'Organização e Execução'=> ['Webinars','Roadshow Presencial','Roadshow Virtual','Eventos Especiais'],
+    'Relatórios'            => [],
 ];
 
 $meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -123,14 +115,30 @@ unset($_SESSION['flash']);
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="stylesheet" href="assets/demandas.css">
+    <style>
+        .subtask-row td { background: #f8f9ff; padding: 0 !important; }
+        .subtask-block { padding: .75rem 1.25rem .75rem 2.5rem; border-top: 1px solid #dee2e6; }
+        .subtask-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:.5rem; }
+        .subtask-item {
+            display:flex; align-items:center; gap:.6rem;
+            padding:.45rem .75rem; border-radius:.4rem;
+            background:#fff; border:1px solid #e3e6f0;
+            margin-bottom:.35rem; flex-wrap:wrap;
+        }
+        .subtask-item:last-child { margin-bottom:0; }
+        .subtask-titulo { flex:1; min-width:160px; font-size:.875rem; font-weight:500; }
+        .subtask-resp   { font-size:.78rem; color:#6c757d; white-space:nowrap; }
+        .subtask-dead   { font-size:.78rem; color:#6c757d; white-space:nowrap; }
+        .toggle-sub-btn { background:none; border:none; padding:0 4px; color:#6c757d; cursor:pointer; }
+        .toggle-sub-btn:hover { color:#0d6efd; }
+        .sub-count-badge { font-size:.7rem; }
+    </style>
 </head>
 <body>
 <?php include '../pages/header.php'; ?>
 <div class="container-fluid">
     <div class="row">
-        <div class="col-md-2 sidebar">
-            <?php include '../pages/menu_lateral.php'; ?>
-        </div>
+        <div class="col-md-2 sidebar"><?php include '../pages/menu_lateral.php'; ?></div>
         <div class="col-md-10 main-content py-4">
 
             <?php if ($flash): ?>
@@ -208,14 +216,9 @@ unset($_SESSION['flash']);
                         <option value="">Todas as Categorias</option>
                         <?php foreach ($categorias as $cat => $subs): ?>
                         <optgroup label="<?= htmlspecialchars($cat) ?>">
-                            <option value="<?= htmlspecialchars($cat) ?>" <?= $filtroCategoria === $cat ? 'selected' : '' ?>>
-                                └ Todas de <?= htmlspecialchars($cat) ?>
-                            </option>
-                            <?php foreach ($subs as $sub): ?>
-                            <?php $val = $cat . ' › ' . $sub; ?>
-                            <option value="<?= htmlspecialchars($val) ?>" <?= $filtroCategoria === $val ? 'selected' : '' ?>>
-                                &nbsp;&nbsp;&nbsp;<?= htmlspecialchars($sub) ?>
-                            </option>
+                            <option value="<?= htmlspecialchars($cat) ?>" <?= $filtroCategoria === $cat ? 'selected' : '' ?>>└ Todas de <?= htmlspecialchars($cat) ?></option>
+                            <?php foreach ($subs as $sub): $val = $cat . ' › ' . $sub; ?>
+                            <option value="<?= htmlspecialchars($val) ?>" <?= $filtroCategoria === $val ? 'selected' : '' ?>>&nbsp;&nbsp;&nbsp;<?= htmlspecialchars($sub) ?></option>
                             <?php endforeach; ?>
                         </optgroup>
                         <?php endforeach; ?>
@@ -252,6 +255,7 @@ unset($_SESSION['flash']);
                 <table class="table table-hover table-striped align-middle">
                     <thead class="table-dark">
                         <tr>
+                            <th style="width:30px"></th>
                             <th>#</th>
                             <th>Responsável</th>
                             <th>Categoria</th>
@@ -265,23 +269,37 @@ unset($_SESSION['flash']);
                     </thead>
                     <tbody>
                     <?php if (empty($demandas)): ?>
-                        <tr><td colspan="9" class="text-center text-muted py-4"><i class="bi bi-inbox fs-3 d-block mb-2"></i>Nenhuma demanda encontrada.</td></tr>
+                        <tr><td colspan="10" class="text-center text-muted py-4"><i class="bi bi-inbox fs-3 d-block mb-2"></i>Nenhuma demanda encontrada.</td></tr>
                     <?php else: ?>
-                    <?php foreach ($demandas as $d): ?>
-                        <?php
-                        $hoje      = date('Y-m-d');
-                        $atrasado  = ($d['deadline'] && $d['deadline'] < $hoje && $d['status'] !== 'Done');
-                        $prioClass = ['Alta' => 'danger', 'Média' => 'warning', 'Baixa' => 'secondary'][$d['prioridade']] ?? 'secondary';
+                    <?php foreach ($demandas as $d):
+                        $hoje        = date('Y-m-d');
+                        $atrasado    = ($d['deadline'] && $d['deadline'] < $hoje && $d['status'] !== 'Done');
+                        $prioClass   = ['Alta'=>'danger','Media'=>'warning','Baixa'=>'secondary'][$d['prioridade']] ?? 'secondary';
                         $statusClass = [
-                            'Done'         => 'success', 'Em andamento' => 'primary',
-                            'Produzindo'   => 'info',    'Enviado'      => 'info',
-                            'Publicado'    => 'success', 'Aguardando'   => 'warning',
-                            'Pendente'     => 'secondary','Atrasado'    => 'danger'
+                            'Done'=>'success','Em andamento'=>'primary','Produzindo'=>'info',
+                            'Enviado'=>'info','Publicado'=>'success','Aguardando'=>'warning',
+                            'Pendente'=>'secondary','Atrasado'=>'danger'
                         ][$d['status']] ?? 'secondary';
-
-                        $podeEditar = pode_editar_tarefa((int)$d['id_usuario']);
-                        ?>
+                        $podeEditar  = pode_editar_tarefa((int)$d['id_usuario']);
+                        $subs        = $subtarefasPorDemanda[(int)$d['id']] ?? [];
+                        $temSubs     = !empty($subs);
+                        $collapseId  = 'sub-' . $d['id'];
+                    ?>
+                        <!-- Linha da demanda -->
                         <tr class="<?= $atrasado ? 'table-danger' : '' ?>">
+                            <!-- Botão expandir subtarefas -->
+                            <td class="text-center">
+                                <?php if ($temSubs): ?>
+                                <button class="toggle-sub-btn" data-bs-toggle="collapse" data-bs-target="#<?= $collapseId ?>" aria-expanded="false" title="Ver subtarefas">
+                                    <i class="bi bi-diagram-3 text-primary"></i>
+                                    <span class="badge bg-primary sub-count-badge"><?= count($subs) ?></span>
+                                </button>
+                                <?php elseif ($isAdmin): ?>
+                                <a href="forms/nova_subtarefa.php?id_demanda=<?= $d['id'] ?>" class="toggle-sub-btn" title="Adicionar subtarefa">
+                                    <i class="bi bi-plus-circle text-muted"></i>
+                                </a>
+                                <?php endif; ?>
+                            </td>
                             <td><?= $d['id'] ?></td>
                             <td><?= htmlspecialchars($d['responsavel_nome']) ?></td>
                             <td><small><?= htmlspecialchars($d['categoria']) ?></small></td>
@@ -308,10 +326,91 @@ unset($_SESSION['flash']);
                                 <a href="forms/editar_demanda.php?id=<?= $d['id'] ?>" class="btn btn-sm btn-outline-primary" title="Editar"><i class="bi bi-pencil"></i></a>
                                 <?php endif; ?>
                                 <?php if ($isAdmin): ?>
+                                <a href="forms/nova_subtarefa.php?id_demanda=<?= $d['id'] ?>" class="btn btn-sm btn-outline-success" title="Adicionar Subtarefa"><i class="bi bi-diagram-3"></i></a>
                                 <a href="forms/deletar_demanda.php?id=<?= $d['id'] ?>" class="btn btn-sm btn-outline-danger" title="Excluir" onclick="return confirm('Confirma exclusão?')"><i class="bi bi-trash"></i></a>
                                 <?php endif; ?>
                             </td>
                         </tr>
+
+                        <!-- Linha expansível de subtarefas -->
+                        <?php if ($temSubs): ?>
+                        <tr class="subtask-row">
+                            <td colspan="10">
+                                <div class="collapse" id="<?= $collapseId ?>">
+                                    <div class="subtask-block">
+                                        <div class="subtask-header">
+                                            <span class="text-muted" style="font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em">
+                                                <i class="bi bi-diagram-3 me-1"></i>Subtarefas (<?= count($subs) ?>)
+                                            </span>
+                                            <?php if ($isAdmin): ?>
+                                            <a href="forms/nova_subtarefa.php?id_demanda=<?= $d['id'] ?>" class="btn btn-xs btn-outline-success btn-sm py-0 px-2" style="font-size:.75rem">
+                                                <i class="bi bi-plus-lg me-1"></i>Adicionar
+                                            </a>
+                                            <?php endif; ?>
+                                        </div>
+
+                                        <?php foreach ($subs as $sub):
+                                            $subAtrasado   = ($sub['deadline'] && $sub['deadline'] < $hoje && $sub['status'] !== 'Done');
+                                            $subPrioClass  = ['Alta'=>'danger','Media'=>'warning','Baixa'=>'secondary'][$sub['prioridade']] ?? 'secondary';
+                                            $subStatusClass= [
+                                                'Done'=>'success','Em andamento'=>'primary','Produzindo'=>'info',
+                                                'Aguardando'=>'warning','Pendente'=>'secondary','Atrasado'=>'danger'
+                                            ][$sub['status']] ?? 'secondary';
+                                            $podEditSub = $isAdmin || (int)$sub['id_usuario'] === $userId;
+                                        ?>
+                                        <div class="subtask-item <?= $subAtrasado ? 'border-danger' : '' ?>">
+                                            <!-- Título -->
+                                            <span class="subtask-titulo">
+                                                <?= $subAtrasado ? '<i class="bi bi-exclamation-triangle-fill text-danger me-1"></i>' : '' ?>
+                                                <?= htmlspecialchars($sub['titulo']) ?>
+                                            </span>
+
+                                            <!-- Responsável -->
+                                            <span class="subtask-resp">
+                                                <i class="bi bi-person me-1"></i><?= htmlspecialchars($sub['responsavel_nome']) ?>
+                                            </span>
+
+                                            <!-- Deadline -->
+                                            <?php if ($sub['deadline']): ?>
+                                            <span class="subtask-dead">
+                                                <i class="bi bi-calendar3 me-1"></i><?= date('d/m/Y', strtotime($sub['deadline'])) ?>
+                                            </span>
+                                            <?php endif; ?>
+
+                                            <!-- Prioridade -->
+                                            <span class="badge bg-<?= $subPrioClass ?>" style="font-size:.7rem"><?= $sub['prioridade'] ?></span>
+
+                                            <!-- Status -->
+                                            <?php if ($podEditSub): ?>
+                                            <select class="form-select form-select-sm sub-status-select" data-id="<?= $sub['id'] ?>" style="min-width:120px;font-size:.8rem">
+                                                <?php foreach (['Pendente','Em andamento','Produzindo','Aguardando','Done','Atrasado'] as $ss): ?>
+                                                <option value="<?= $ss ?>" <?= $sub['status'] === $ss ? 'selected' : '' ?>><?= $ss ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                            <?php else: ?>
+                                            <span class="badge bg-<?= $subStatusClass ?>" style="font-size:.7rem"><?= $sub['status'] ?></span>
+                                            <?php endif; ?>
+
+                                            <!-- Ações -->
+                                            <?php if ($podEditSub): ?>
+                                            <a href="forms/editar_subtarefa.php?id=<?= $sub['id'] ?>" class="btn btn-sm btn-outline-primary py-0 px-2" title="Editar subtarefa" style="font-size:.75rem">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
+                                            <?php endif; ?>
+                                            <?php if ($isAdmin): ?>
+                                            <a href="forms/deletar_subtarefa.php?id=<?= $sub['id'] ?>&id_demanda=<?= $d['id'] ?>" class="btn btn-sm btn-outline-danger py-0 px-2" title="Excluir subtarefa" onclick="return confirm('Excluir esta subtarefa?')" style="font-size:.75rem">
+                                                <i class="bi bi-trash"></i>
+                                            </a>
+                                            <?php endif; ?>
+                                        </div>
+                                        <?php endforeach; ?>
+
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        <?php endif; ?>
+
                     <?php endforeach; ?>
                     <?php endif; ?>
                     </tbody>
@@ -324,20 +423,45 @@ unset($_SESSION['flash']);
 <?php include '../pages/footer.php'; ?>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+// Status das demandas
 document.querySelectorAll('.status-select').forEach(sel => {
-    sel.addEventListener('change', function() {
-        const id     = this.dataset.id;
-        const status = this.value;
+    sel.addEventListener('change', function () {
+        const id = this.dataset.id, status = this.value;
         fetch('forms/update_status_demanda.php', {
             method: 'POST',
-            headers: {'Content-Type':'application/x-www-form-urlencoded'},
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
             body: `id=${id}&status=${encodeURIComponent(status)}`
         })
         .then(r => r.json())
         .then(data => {
             if (data.success) {
-                const row = this.closest('tr');
-                row.classList.toggle('table-danger', data.atrasado);
+                this.closest('tr').classList.toggle('table-danger', data.atrasado);
+            }
+        });
+    });
+});
+
+// Status das subtarefas
+document.querySelectorAll('.sub-status-select').forEach(sel => {
+    sel.addEventListener('change', function () {
+        const id = this.dataset.id, status = this.value;
+        fetch('forms/update_status_subtarefa.php', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: `id=${id}&status=${encodeURIComponent(status)}`
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                const item = this.closest('.subtask-item');
+                item.classList.toggle('border-danger', data.atrasado);
+                const icone = item.querySelector('.bi-exclamation-triangle-fill');
+                if (data.atrasado && !icone) {
+                    const titulo = item.querySelector('.subtask-titulo');
+                    titulo.insertAdjacentHTML('afterbegin', '<i class="bi bi-exclamation-triangle-fill text-danger me-1"></i>');
+                } else if (!data.atrasado && icone) {
+                    icone.remove();
+                }
             }
         });
     });
