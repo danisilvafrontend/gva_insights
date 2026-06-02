@@ -8,11 +8,10 @@ include '../includes/config.php';
 include '../includes/db_connect.php';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $email = $_POST['email'];
-    $senha = $_POST['senha'];
+    $email = trim($_POST['email'] ?? '');
+    $senha = $_POST['senha'] ?? '';
 
-    $sql = "SELECT id, nome, senha, nivel_acesso FROM usuarios WHERE email = ?";
-    $stmt = $conn->prepare($sql);
+    $stmt = $conn->prepare("SELECT id, nome, senha, nivel_acesso FROM usuarios WHERE email = ?");
 
     if ($stmt === false) {
         die('Erro na preparação da consulta: ' . htmlspecialchars($conn->error));
@@ -26,11 +25,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $usuario = $result->fetch_assoc();
 
         if (password_verify($senha, $usuario['senha'])) {
-            // Login bem-sucedido — popula sessão completa
+            // Login bem-sucedido — popula sessão
             $_SESSION['user_id']      = (int)$usuario['id'];
             $_SESSION['user_nome']    = $usuario['nome'];
             $_SESSION['email']        = $email;
-            $_SESSION['nivel_acesso'] = (int)($usuario['nivel_acesso'] ?? 3);
+            // Fallback seguro: se não tiver nivel_acesso no banco, assume Operacional (2)
+            $_SESSION['nivel_acesso'] = in_array((int)$usuario['nivel_acesso'], [1, 2], true)
+                                        ? (int)$usuario['nivel_acesso']
+                                        : 2;
 
             header("Location: ../pages/home.php");
             exit();
