@@ -1,0 +1,37 @@
+# Arquivos sensíveis — nunca versionar
+includes/db_connect.php
+includes/config.php
+
+# Configurações locais
+*.env
+.env
+.env.local
+
+# Logs
+*.log
+logs/
+
+# Cache e temporários
+/tmp/
+cache/
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Dependências
+vendor/
+node_modules/
+
+# Backups
+*.bak
+*.backup
+*.sql
+*.zip

@@ -3,12 +3,17 @@
 
     <ul class="nav flex-column">
         <li class="nav-item mb-2">
-            <a href="home.php" class="nav-link text-white">
+            <a href="https://insights.gvacompany.com/pages/home.php" class="nav-link text-white">
                 <i class="bi bi-speedometer2 me-2"></i> Dashboard
             </a>
         </li>
         <li class="nav-item mb-2">
-            <a href="cadastro_clientes.php" class="nav-link text-white">
+            <a href="https://insights.gvacompany.com/demandas/index.php" class="nav-link text-white">
+                <i class="bi bi-speedometer2 me-2"></i> Tarefas
+            </a>
+        </li>
+        <li class="nav-item mb-2">
+            <a href="https://insights.gvacompany.com/pages/cadastro_clientes.php" class="nav-link text-white">
                 <i class="bi bi-person-plus me-2"></i> Cadastrar Cliente
             </a>
         </li>
@@ -54,17 +59,17 @@
         </li>
 
         <li class="nav-item mb-2">
-            <a href="cadastro_usuario.php" class="nav-link text-white">
+            <a href="https://insights.gvacompany.com/pages/cadastro_usuario.php" class="nav-link text-white">
                 <i class="bi bi-person-badge me-2"></i> Cadastrar Usuário
             </a>
         </li>
         <li class="nav-item mb-2">
-            <a href="cadastro_empresa.php" class="nav-link text-white">
+            <a href="https://insights.gvacompany.com/pages/cadastro_empresa.php" class="nav-link text-white">
                 <i class="bi bi-building me-2"></i> Cadastrar Empresa
             </a>
         </li>
         <li class="nav-item mb-2">
-            <a href="cadastro_tema.php" class="nav-link text-white">
+            <a href="https://insights.gvacompany.com/pages/cadastro_tema.php" class="nav-link text-white">
                 <i class="bi bi-tags me-2"></i> Cadastrar Temas
             </a>
         </li>

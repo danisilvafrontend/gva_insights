@@ -1,0 +1,106 @@
+/* ============================================
+   Módulo Demandas — GVA Insights
+   Brasil DNA 2026
+   ============================================ */
+
+:root {
+    --color-primary:  #01696f;
+    --color-surface:  #f9f8f5;
+    --color-border:   #dcd9d5;
+    --radius-md:      0.5rem;
+    --shadow-sm:      0 1px 4px rgba(0,0,0,.08);
+    --shadow-md:      0 4px 16px rgba(0,0,0,.10);
+    --transition:     180ms cubic-bezier(.16,1,.3,1);
+}
+
+body {
+    background-color: var(--color-surface);
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 0.9375rem;
+}
+
+/* Sidebar */
+.sidebar {
+    background-color: #1c2a3a;
+    min-height: 100vh;
+    padding-top: 1rem;
+}
+
+/* Main content */
+.main-content { background: #fff; min-height: 100vh; }
+
+/* KPI Cards */
+.kpi-card {
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-left: 4px solid;
+    border-radius: var(--radius-md);
+    padding: 1rem 1.25rem;
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow var(--transition), transform var(--transition);
+}
+.kpi-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}
+.kpi-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: #6c757d;
+    margin-bottom: .25rem;
+}
+.kpi-value {
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+/* Tabela */
+.table th { font-size: 0.8rem; text-transform: uppercase; letter-spacing:.04em; }
+.table td { font-size: 0.875rem; vertical-align: middle; }
+
+/* Formulário */
+.form-card {
+    background: #fff;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    padding: 2rem;
+    max-width: 760px;
+    margin: 0 auto;
+}
+.form-card .section-title {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: #6c757d;
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: .5rem;
+    margin-bottom: 1.25rem;
+    margin-top: 1.5rem;
+}
+
+/* Badge status */
+.badge { font-size: 0.75rem; }
+
+/* Alert flash */
+.alert-flash {
+    position: fixed;
+    top: 1.25rem;
+    right: 1.25rem;
+    z-index: 9999;
+    min-width: 260px;
+    animation: slideIn .25s ease;
+}
+@keyframes slideIn {
+    from { opacity: 0; transform: translateX(40px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Campos condicionais */
+.fields-gestao,
+.fields-conteudo {
+    transition: opacity .2s ease;
+}
+.fields-gestao.d-none,
+.fields-conteudo.d-none { opacity: 0; }
