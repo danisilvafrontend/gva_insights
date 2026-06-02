@@ -1,11 +1,12 @@
 <?php
 // teams_webhook.php
-// URLs definidas em includes/db_connect.php (fora do git):
+//
+// Defina no includes/db_connect.php (fora do git):
 //
 //   Canal (toda a equipe vê):
 //   define('TEAMS_WEBHOOK_URL', 'https://...');
 //
-//   Chat privado — mapeado por ID do usuário na tabela `usuarios`:
+//   Chat privado por ID do usuário:
 //   define('TEAMS_CHAT_WEBHOOKS', [
 //       1 => 'https://... fluxo Daniela',
 //       4 => 'https://... fluxo Anna',
@@ -14,210 +15,210 @@
 // ============================================================
 // HELPER — gera link do Outlook Web para adicionar evento
 // ============================================================
-function _outlookCalendarLink(string $titulo, string $deadlineYmd, string $descricao = ''): string {
+function _outlookCalendarLink(string $titulo, string $deadlineYmd, string $descricao = ''): string
+{
     if (empty($deadlineYmd)) return '';
 
     $dt = DateTime::createFromFormat('Y-m-d', $deadlineYmd);
     if (!$dt) return '';
 
-    $startDt  = $dt->format('Y-m-d') . 'T09:00:00';
-    $endDt    = $dt->format('Y-m-d') . 'T10:00:00';
-
     $params = http_build_query([
-        'path'     => '/calendar/action/compose',
-        'rru'      => 'addevent',
-        'subject'  => $titulo,
-        'startdt'  => $startDt,
-        'enddt'    => $endDt,
-        'body'     => $descricao,
+        'path'    => '/calendar/action/compose',
+        'rru'     => 'addevent',
+        'subject' => $titulo,
+        'startdt' => $dt->format('Y-m-d') . 'T09:00:00',
+        'enddt'   => $dt->format('Y-m-d') . 'T10:00:00',
+        'body'    => $descricao,
     ]);
 
     return 'https://outlook.office.com/calendar/0/deeplink/compose?' . $params;
 }
 
 // ============================================================
+// HELPER — monta array de facts para o FactSet
+// ============================================================
+function _buildFacts(array $dados, string $priEmoji, string $deadline): array
+{
+    $facts = [
+        ['title' => '📋 Tarefa',               'value' => $dados['tarefa']],
+        ['title' => '🗂️ Categoria',            'value' => $dados['categoria']],
+        ['title' => '📅 Mês de Referência',    'value' => $dados['mes']       ?? '—'],
+        ['title' => '⏰ Deadline',              'value' => $deadline],
+        ['title' => $priEmoji . ' Prioridade', 'value' => $dados['prioridade']],
+        ['title' => '📌 Status',               'value' => $dados['status']],
+    ];
+
+    if (!empty($dados['empresas'])) {
+        $facts[] = ['title' => '🏢 Empresas',  'value' => $dados['empresas']];
+    }
+    if (!empty($dados['clientes'])) {
+        $facts[] = ['title' => '👤 Clientes',  'value' => $dados['clientes']];
+    }
+    if (!empty($dados['observacoes'])) {
+        $facts[] = ['title' => '💬 Observações', 'value' => $dados['observacoes']];
+    }
+
+    return $facts;
+}
+
+// ============================================================
+// HELPER — monta array de actions (Ver sistema + Agenda)
+// ============================================================
+function _buildActions(array $dados, string $calLink): array
+{
+    $actions = [[
+        'type'  => 'Action.OpenUrl',
+        'title' => '🔗 Ver no Sistema',
+        'url'   => $dados['link_sistema'] ?? 'https://insights.gvacompany.com/demandas/',
+    ]];
+
+    if (!empty($calLink)) {
+        $actions[] = [
+            'type'  => 'Action.OpenUrl',
+            'title' => '📅 Adicionar à Agenda',
+            'url'   => $calLink,
+        ];
+    }
+
+    return $actions;
+}
+
+// ============================================================
+// HELPER — monta payload Adaptive Card completo
+// ============================================================
+function _buildPayload(string $titulo, string $subtitulo, array $facts, array $actions): array
+{
+    return [
+        'type'        => 'message',
+        'attachments' => [[
+            'contentType' => 'application/vnd.microsoft.card.adaptive',
+            'content'     => [
+                '$schema' => 'http://adaptivecards.io/schemas/adaptive-card.json',
+                'type'    => 'AdaptiveCard',
+                'version' => '1.4',
+                'body'    => [
+                    [
+                        'type'   => 'TextBlock',
+                        'size'   => 'Large',
+                        'weight' => 'Bolder',
+                        'text'   => $titulo,
+                        'color'  => 'Accent',
+                        'wrap'   => true,
+                    ],
+                    [
+                        'type'     => 'TextBlock',
+                        'text'     => $subtitulo,
+                        'isSubtle' => true,
+                        'spacing'  => 'None',
+                        'wrap'     => true,
+                    ],
+                    [
+                        'type'    => 'FactSet',
+                        'spacing' => 'Medium',
+                        'facts'   => $facts,
+                    ],
+                ],
+                'actions' => $actions,
+            ],
+        ]],
+    ];
+}
+
+// ============================================================
 // 1. NOTIFICAÇÃO NO CANAL (visível para toda a equipe)
 // ============================================================
-function notificarTeams(array $dados): bool {
-
+function notificarTeams(array $dados): bool
+{
     if (!defined('TEAMS_WEBHOOK_URL') || empty(TEAMS_WEBHOOK_URL)) return false;
 
     $emojis = [
-        'Gestão & Planejamento' => '📊',
-        'Videos Promo'          => '🎬',
-        'Webinars'              => '🎤',
-        'News & Releases'       => '📰',
-        'Posts SoMe'            => '📱',
-        'Roadshow Presencial'   => '🗺️',
-        'Roadshow Virtual'      => '💻',
-        'Eventos Especiais'     => '⭐',
+        'Gestão & Planejamento'                => '📊',
+        'Videos Promo'                         => '🎬',
+        'Webinars'                             => '🎤',
+        'News & Releases'                      => '📰',
+        'Posts SoMe'                           => '📱',
+        'Roadshow Presencial'                  => '🗺️',
+        'Roadshow Virtual / Eventos Especiais' => '💻',
     ];
+    $prioridadeEmoji = ['Alta' => '🔴', 'Media' => '🟡', 'Média' => '🟡', 'Baixa' => '🟢'];
 
-    $prioridadeEmoji = ['Alta' => '🔴', 'Media' => '🟡', 'Baixa' => '🟢'];
-
-    $emoji    = $emojis[$dados['categoria']]           ?? '📋';
+    $emoji    = $emojis[$dados['categoria']] ?? '📋';
     $priEmoji = $prioridadeEmoji[$dados['prioridade']] ?? '⚪';
     $deadline = !empty($dados['deadline'])
                 ? date('d/m/Y', strtotime($dados['deadline']))
                 : 'Não definido';
 
-    $descCal  = 'Tarefa Brasil DNA 2026\nCategoria: ' . ($dados['categoria'] ?? '') . '\nResponsável: ' . ($dados['responsavel'] ?? '') . '\nPrioridade: ' . ($dados['prioridade'] ?? '') . '\nSistema: ' . ($dados['link_sistema'] ?? '');
-    $calLink  = _outlookCalendarLink('Brasil DNA 2026: ' . $dados['tarefa'], $dados['deadline'] ?? '', $descCal);
+    $descCal = implode('\n', array_filter([
+        'Responsável: '  . ($dados['responsavel'] ?? ''),
+        'Categoria: '    . ($dados['categoria']   ?? ''),
+        'Prioridade: '   . ($dados['prioridade']  ?? ''),
+        !empty($dados['empresas']) ? 'Empresas: '  . $dados['empresas'] : '',
+        !empty($dados['clientes']) ? 'Clientes: '  . $dados['clientes'] : '',
+        'Sistema: '      . ($dados['link_sistema'] ?? ''),
+    ]));
 
-    $actions = [[
-        "type"  => "Action.OpenUrl",
-        "title" => "🔗 Ver no Sistema",
-        "url"   => $dados['link_sistema'] ?? "https://insights.gvacompany.com/demandas/"
-    ]];
-    if (!empty($calLink)) {
-        $actions[] = [
-            "type"  => "Action.OpenUrl",
-            "title" => "📅 Adicionar à Agenda",
-            "url"   => $calLink
-        ];
-    }
+    $calLink = _outlookCalendarLink(
+        'Demanda: ' . ($dados['tarefa'] ?? ''),
+        $dados['deadline'] ?? '',
+        $descCal
+    );
 
-    $payload = [
-        "type"        => "message",
-        "attachments" => [[
-            "contentType" => "application/vnd.microsoft.card.adaptive",
-            "content"     => [
-                "\$schema" => "http://adaptivecards.io/schemas/adaptive-card.json",
-                "type"    => "AdaptiveCard",
-                "version" => "1.4",
-                "body"    => [
-                    [
-                        "type"   => "TextBlock",
-                        "size"   => "Large",
-                        "weight" => "Bolder",
-                        "text"   => "{$emoji} Nova Tarefa — Brasil DNA 2026",
-                        "color"  => "Accent",
-                        "wrap"   => true
-                    ],
-                    [
-                        "type"     => "TextBlock",
-                        "text"     => $dados['categoria'],
-                        "isSubtle" => true,
-                        "spacing"  => "None"
-                    ],
-                    [
-                        "type"    => "FactSet",
-                        "spacing" => "Medium",
-                        "facts"   => [
-                            ["title" => "👤 Responsável", "value" => $dados['responsavel']],
-                            ["title" => "📋 Tarefa",      "value" => $dados['tarefa']],
-                            ["title" => "📅 Mês",         "value" => $dados['mes'] ?? '—'],
-                            ["title" => "⏰ Deadline",     "value" => $deadline],
-                            ["title" => "{$priEmoji} Prioridade", "value" => $dados['prioridade']],
-                            ["title" => "📌 Status",      "value" => $dados['status']],
-                        ]
-                    ]
-                ],
-                "actions" => $actions
-            ]
-        ]]
-    ];
+    $titulo    = "{$emoji} Nova Demanda — " . ($dados['categoria'] ?? '');
+    $subtitulo = '👤 Responsável: ' . ($dados['responsavel'] ?? '');
+    $facts     = _buildFacts($dados, $priEmoji, $deadline);
+    $actions   = _buildActions($dados, $calLink);
 
-    return _enviarWebhook(TEAMS_WEBHOOK_URL, $payload);
+    return _enviarWebhook(TEAMS_WEBHOOK_URL, _buildPayload($titulo, $subtitulo, $facts, $actions));
 }
 
 // ============================================================
 // 2. NOTIFICAÇÃO VIA CHAT PRIVADO (somente o responsável vê)
 // ============================================================
-function notificarTeamsChat(array $dados): bool {
-
+function notificarTeamsChat(array $dados): bool
+{
     if (!defined('TEAMS_CHAT_WEBHOOKS')) return false;
 
-    $idUsuario = intval($dados['id_usuario'] ?? 0);
+    $idUsuario = (int)($dados['id_usuario'] ?? 0);
     if (!$idUsuario) return false;
 
     $mapa = TEAMS_CHAT_WEBHOOKS;
     if (empty($mapa[$idUsuario])) return false;
 
-    $url      = $mapa[$idUsuario];
-    $nomeResp = $dados['responsavel'] ?? 'Responsável';
+    $prioridadeEmoji = ['Alta' => '🔴', 'Media' => '🟡', 'Média' => '🟡', 'Baixa' => '🟢'];
 
-    $prioridadeEmoji = ['Alta' => '🔴', 'Media' => '🟡', 'Baixa' => '🟢'];
-    $priEmoji = $prioridadeEmoji[$dados['prioridade']] ?? '⚪';
-    $deadline = !empty($dados['deadline'])
-                ? date('d/m/Y', strtotime($dados['deadline']))
-                : 'Não definido';
+    $priEmoji  = $prioridadeEmoji[$dados['prioridade']] ?? '⚪';
+    $nomeResp  = $dados['responsavel'] ?? 'Responsável';
+    $deadline  = !empty($dados['deadline'])
+                 ? date('d/m/Y', strtotime($dados['deadline']))
+                 : 'Não definido';
 
-    $descCal = 'Tarefa Brasil DNA 2026\nCategoria: ' . ($dados['categoria'] ?? '') . '\nPrioridade: ' . ($dados['prioridade'] ?? '') . '\nSistema: ' . ($dados['link_sistema'] ?? '');
-    $calLink = _outlookCalendarLink('Brasil DNA 2026: ' . $dados['tarefa'], $dados['deadline'] ?? '', $descCal);
+    $descCal = implode('\n', array_filter([
+        'Categoria: '   . ($dados['categoria']  ?? ''),
+        'Prioridade: '  . ($dados['prioridade'] ?? ''),
+        !empty($dados['empresas']) ? 'Empresas: ' . $dados['empresas'] : '',
+        !empty($dados['clientes']) ? 'Clientes: ' . $dados['clientes'] : '',
+        'Sistema: '     . ($dados['link_sistema'] ?? ''),
+    ]));
 
-    $actions = [[
-        "type"  => "Action.OpenUrl",
-        "title" => "🔗 Ver no Sistema",
-        "url"   => $dados['link_sistema'] ?? "https://insights.gvacompany.com/demandas/"
-    ]];
-    if (!empty($calLink)) {
-        $actions[] = [
-            "type"  => "Action.OpenUrl",
-            "title" => "📅 Adicionar à Agenda",
-            "url"   => $calLink
-        ];
-    }
+    $calLink = _outlookCalendarLink(
+        'Demanda: ' . ($dados['tarefa'] ?? ''),
+        $dados['deadline'] ?? '',
+        $descCal
+    );
 
-    $body = [
-        [
-            "type"   => "TextBlock",
-            "size"   => "Large",
-            "weight" => "Bolder",
-            "text"   => "👋 Olá, {$nomeResp}! Você tem uma nova tarefa.",
-            "color"  => "Accent",
-            "wrap"   => true
-        ],
-        [
-            "type"     => "TextBlock",
-            "text"     => "Brasil DNA 2026 — " . ($dados['categoria'] ?? ''),
-            "isSubtle" => true,
-            "spacing"  => "None"
-        ],
-        [
-            "type"    => "FactSet",
-            "spacing" => "Medium",
-            "facts"   => [
-                ["title" => "📋 Tarefa",   "value" => $dados['tarefa']],
-                ["title" => "📅 Mês",      "value" => $dados['mes'] ?? '—'],
-                ["title" => "⏰ Deadline",  "value" => $deadline],
-                ["title" => "{$priEmoji} Prioridade", "value" => $dados['prioridade']],
-                ["title" => "📌 Status",   "value" => $dados['status']],
-            ]
-        ]
-    ];
+    $titulo    = "👋 Olá, {$nomeResp}! Você tem uma nova demanda.";
+    $subtitulo = '🗂️ ' . ($dados['categoria'] ?? '');
+    $facts     = _buildFacts($dados, $priEmoji, $deadline);
+    $actions   = _buildActions($dados, $calLink);
 
-    if (!empty($dados['observacoes'])) {
-        $body[] = [
-            "type"    => "TextBlock",
-            "text"    => "💬 " . $dados['observacoes'],
-            "wrap"    => true,
-            "spacing" => "Medium",
-            "color"   => "Warning"
-        ];
-    }
-
-    $payload = [
-        "type"        => "message",
-        "attachments" => [[
-            "contentType" => "application/vnd.microsoft.card.adaptive",
-            "content"     => [
-                "\$schema" => "http://adaptivecards.io/schemas/adaptive-card.json",
-                "type"    => "AdaptiveCard",
-                "version" => "1.4",
-                "body"    => $body,
-                "actions" => $actions
-            ]
-        ]]
-    ];
-
-    return _enviarWebhook($url, $payload);
+    return _enviarWebhook($mapa[$idUsuario], _buildPayload($titulo, $subtitulo, $facts, $actions));
 }
 
 // ============================================================
 // HELPER — envia o payload via cURL
 // ============================================================
-function _enviarWebhook(string $url, array $payload): bool {
+function _enviarWebhook(string $url, array $payload): bool
+{
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_POST           => true,
@@ -228,7 +229,7 @@ function _enviarWebhook(string $url, array $payload): bool {
         CURLOPT_TIMEOUT        => 10,
     ]);
     curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $ok = in_array(curl_getinfo($ch, CURLINFO_HTTP_CODE), [200, 202]);
     curl_close($ch);
-    return in_array($httpCode, [200, 202]);
+    return $ok;
 }
