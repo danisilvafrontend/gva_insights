@@ -11,6 +11,9 @@
 //       1 => 'https://... fluxo Daniela',
 //       4 => 'https://... fluxo Anna',
 //   ]);
+//
+//   Make.com → Planner:
+//   define('MAKE_PLANNER_WEBHOOK', 'https://hook.us2.make.com/6bumouozgntft1404mhj44irjhvouw12');
 
 // ============================================================
 // HELPER — gera link do Outlook Web para adicionar evento
@@ -212,6 +215,27 @@ function notificarTeamsChat(array $dados): bool
     $actions   = _buildActions($dados, $calLink);
 
     return _enviarWebhook($mapa[$idUsuario], _buildPayload($titulo, $subtitulo, $facts, $actions));
+}
+
+// ============================================================
+// 3. CRIAR TAREFA NO PLANNER via Make.com Webhook
+// ============================================================
+function criarTarefaPlanner(array $dados): bool
+{
+    if (!defined('MAKE_PLANNER_WEBHOOK') || empty(MAKE_PLANNER_WEBHOOK)) return false;
+
+    $titulo = trim(($dados['tarefa'] ?? '') . ' — ' . ($dados['empresa'] ?? $dados['empresas'] ?? ''));
+
+    $payload = [
+        'acao'     => 'criar_tarefa',
+        'titulo'   => $titulo,
+        'empresa'  => $dados['empresa']   ?? $dados['empresas']  ?? '',
+        'status'   => $dados['status']    ?? 'A Fazer',
+        'deadline' => $dados['deadline']  ?? '',
+        'task_id'  => (string)($dados['id'] ?? ''),
+    ];
+
+    return _enviarWebhook(MAKE_PLANNER_WEBHOOK, $payload);
 }
 
 // ============================================================
