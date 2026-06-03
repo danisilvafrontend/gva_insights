@@ -103,6 +103,9 @@ $categorias = [
 
 $meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
+// Status que indicam tarefa finalizada (não devem ser marcados como atrasados)
+$statusFinal = ['Done', 'Enviado', 'Publicado'];
+
 $flash = $_SESSION['flash'] ?? null;
 unset($_SESSION['flash']);
 ?>
@@ -273,7 +276,7 @@ unset($_SESSION['flash']);
                     <?php else: ?>
                     <?php foreach ($demandas as $d):
                         $hoje        = date('Y-m-d');
-                        $atrasado    = ($d['deadline'] && $d['deadline'] < $hoje && $d['status'] !== 'Done');
+                        $atrasado    = ($d['deadline'] && $d['deadline'] < $hoje && !in_array($d['status'], $statusFinal));
                         $prioClass   = ['Alta'=>'danger','Media'=>'warning','Baixa'=>'secondary'][$d['prioridade']] ?? 'secondary';
                         $statusClass = [
                             'Done'=>'success','Em andamento'=>'primary','Produzindo'=>'info',
@@ -350,11 +353,12 @@ unset($_SESSION['flash']);
                                         </div>
 
                                         <?php foreach ($subs as $sub):
-                                            $subAtrasado   = ($sub['deadline'] && $sub['deadline'] < $hoje && $sub['status'] !== 'Done');
+                                            $subAtrasado   = ($sub['deadline'] && $sub['deadline'] < $hoje && !in_array($sub['status'], $statusFinal));
                                             $subPrioClass  = ['Alta'=>'danger','Media'=>'warning','Baixa'=>'secondary'][$sub['prioridade']] ?? 'secondary';
                                             $subStatusClass= [
                                                 'Done'=>'success','Em andamento'=>'primary','Produzindo'=>'info',
-                                                'Aguardando'=>'warning','Pendente'=>'secondary','Atrasado'=>'danger'
+                                                'Enviado'=>'info','Publicado'=>'success','Aguardando'=>'warning',
+                                                'Pendente'=>'secondary','Atrasado'=>'danger'
                                             ][$sub['status']] ?? 'secondary';
                                             $podEditSub = $isAdmin || (int)$sub['id_usuario'] === $userId;
                                         ?>
