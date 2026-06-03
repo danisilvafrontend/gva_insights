@@ -61,7 +61,6 @@ $stmt->close();
 $statusFinal = ['Done', 'Enviado', 'Publicado'];
 $hoje = date('Y-m-d');
 
-// Separar ativas e concluídas
 $demandas   = array_filter($todasDemandas, fn($d) => !in_array($d['status'], $statusFinal));
 $concluidas = array_filter($todasDemandas, fn($d) =>  in_array($d['status'], $statusFinal));
 $demandas   = array_values($demandas);
@@ -127,10 +126,9 @@ $meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto'
 $flash = $_SESSION['flash'] ?? null;
 unset($_SESSION['flash']);
 
-// Helper: renderiza as linhas de uma lista de demandas
 function renderRows(array $list, array $subtarefasPorDemanda, array $statusFinal, string $hoje, bool $isAdmin, bool $podeEditarFn, int $userId): void {
     if (empty($list)) {
-        echo '<tr><td colspan="10" class="text-center text-muted py-4"><i class="bi bi-inbox fs-3 d-block mb-2"></i>Nenhuma demanda encontrada.</td></tr>';
+        echo '<tr><td colspan="11" class="text-center text-muted py-4"><i class="bi bi-inbox fs-3 d-block mb-2"></i>Nenhuma demanda encontrada.</td></tr>';
         return;
     }
     foreach ($list as $d) {
@@ -146,7 +144,8 @@ function renderRows(array $list, array $subtarefasPorDemanda, array $statusFinal
         $subs        = $subtarefasPorDemanda[(int)$d['id']] ?? [];
         $temSubs     = !empty($subs);
         $subRowId    = 'subrow-' . $d['id'];
-        $trClass     = $atrasado ? 'table-danger' : ($concluida ? '' : '');
+        $trClass     = $atrasado ? 'table-danger' : '';
+        $titulo = ($d['acao'] ? $d['acao'] . ': ' : '') . mb_strimwidth($d['tarefa'], 0, 80, '...');
         ?>
         <tr class="demanda-row <?= $trClass ?>" id="demanda-tr-<?= $d['id'] ?>" data-id="<?= $d['id'] ?>" data-concluida="<?= $concluida ? '1' : '0' ?>">
             <td class="text-center">
@@ -183,6 +182,19 @@ function renderRows(array $list, array $subtarefasPorDemanda, array $statusFinal
                 <?php endif; ?>
             </td>
             <td>
+                <!-- Botão Enviar para o Planner -->
+                <?php if ($isAdmin): ?>
+                <button
+                    class="btn btn-sm btn-planner planner-btn"
+                    title="Enviar para o Planner"
+                    data-id="<?= $d['id'] ?>"
+                    data-titulo="<?= htmlspecialchars($titulo, ENT_QUOTES) ?>"
+                    data-deadline="<?= $d['deadline'] ?? '' ?>">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/7/7e/Microsoft_Planner_2019.svg" width="16" height="16" alt="Planner"> Planner
+                </button>
+                <?php endif; ?>
+            </td>
+            <td>
                 <?php if ($podeEditar): ?>
                 <a href="forms/editar_demanda.php?id=<?= $d['id'] ?>" class="btn btn-sm btn-outline-primary" title="Editar"><i class="bi bi-pencil"></i></a>
                 <?php endif; ?>
@@ -194,7 +206,7 @@ function renderRows(array $list, array $subtarefasPorDemanda, array $statusFinal
         </tr>
         <?php if ($temSubs): ?>
         <tr class="subtask-row" id="<?= $subRowId ?>">
-            <td colspan="10">
+            <td colspan="11">
                 <div class="subtask-block">
                     <div class="subtask-header">
                         <span class="text-muted" style="font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em">
@@ -278,6 +290,27 @@ function renderRows(array $list, array $subtarefasPorDemanda, array $statusFinal
         .toggle-sub-btn:hover { color:#0d6efd; }
         .sub-count-badge { font-size:.7rem; }
         .subtask-row { display: none; }
+
+        /* Botão Planner */
+        .btn-planner {
+            background: #fff;
+            border: 1px solid #0078d4;
+            color: #0078d4;
+            font-size: .75rem;
+            padding: .2rem .5rem;
+            display: inline-flex;
+            align-items: center;
+            gap: .3rem;
+            white-space: nowrap;
+            transition: background .2s;
+        }
+        .btn-planner:hover { background: #e6f0fa; }
+        .btn-planner.enviado {
+            border-color: #198754;
+            color: #198754;
+            pointer-events: none;
+        }
+        .btn-planner.loading { opacity: .6; pointer-events: none; }
 
         /* Tabela de concluídas */
         .section-concluidas { margin-top: 2.5rem; }
@@ -430,12 +463,13 @@ function renderRows(array $list, array $subtarefasPorDemanda, array $statusFinal
                             <th>Deadline</th>
                             <th>Prioridade</th>
                             <th>Status</th>
+                            <th>Planner</th>
                             <th>Ações</th>
                         </tr>
                     </thead>
                     <tbody id="tbody-ativas">
                         <tr id="empty-ativas" style="<?= empty($demandas) ? '' : 'display:none' ?>">
-                            <td colspan="10" class="text-center text-muted py-4">
+                            <td colspan="11" class="text-center text-muted py-4">
                                 <i class="bi bi-check2-all fs-3 d-block mb-2 text-success"></i>Todas as demandas estão concluídas!
                             </td>
                         </tr>
@@ -453,7 +487,7 @@ function renderRows(array $list, array $subtarefasPorDemanda, array $statusFinal
                     <i class="bi bi-chevron-down chevron"></i>
                 </button>
 
-                <div id="table-concluidas-wrapper" class="<?= !empty($concluidas) ? '' : '' ?>">
+                <div id="table-concluidas-wrapper">
                     <div class="table-responsive">
                         <table class="table table-hover align-middle table-sm" id="table-concluidas">
                             <thead class="table-success">
@@ -467,12 +501,13 @@ function renderRows(array $list, array $subtarefasPorDemanda, array $statusFinal
                                     <th>Deadline</th>
                                     <th>Prioridade</th>
                                     <th>Status</th>
+                                    <th>Planner</th>
                                     <th>Ações</th>
                                 </tr>
                             </thead>
                             <tbody id="tbody-concluidas">
                                 <tr id="empty-concluidas" style="<?= empty($concluidas) ? '' : 'display:none' ?>">
-                                    <td colspan="10" class="text-center text-muted py-3">
+                                    <td colspan="11" class="text-center text-muted py-3">
                                         <i class="bi bi-inbox me-1"></i>Nenhuma demanda concluída ainda.
                                     </td>
                                 </tr>
@@ -486,6 +521,17 @@ function renderRows(array $list, array $subtarefasPorDemanda, array $statusFinal
         </div>
     </div>
 </div>
+
+<!-- Toast notificação Planner -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999">
+    <div id="toastPlanner" class="toast align-items-center text-white border-0" role="alert">
+        <div class="d-flex">
+            <div class="toast-body" id="toastPlannerMsg"></div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    </div>
+</div>
+
 <?php include '../pages/footer.php'; ?>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
@@ -513,13 +559,22 @@ function bindToggleSub(btn) {
 }
 document.querySelectorAll('.toggle-sub-btn[data-target]').forEach(bindToggleSub);
 
+// ── Toast helper ──
+function showToast(msg, tipo = 'success') {
+    const el  = document.getElementById('toastPlanner');
+    const msgEl = document.getElementById('toastPlannerMsg');
+    el.classList.remove('bg-success', 'bg-danger');
+    el.classList.add('bg-' + tipo);
+    msgEl.textContent = msg;
+    bootstrap.Toast.getOrCreateInstance(el, { delay: 4000 }).show();
+}
+
 // Atualiza badges de contagem
 function updateBadges() {
     const nAtivas    = document.querySelectorAll('#tbody-ativas tr.demanda-row').length;
     const nConc      = document.querySelectorAll('#tbody-concluidas tr.demanda-row').length;
     document.getElementById('badge-ativas').textContent    = nAtivas;
     document.getElementById('badge-concluidas').textContent = nConc;
-
     document.getElementById('empty-ativas').style.display    = nAtivas === 0 ? '' : 'none';
     document.getElementById('empty-concluidas').style.display = nConc  === 0 ? '' : 'none';
 }
@@ -531,11 +586,7 @@ function moveDemandaRow(trRow, toConcluidas) {
     const destTbody = toConcluidas
         ? document.getElementById('tbody-concluidas')
         : document.getElementById('tbody-ativas');
-
-    // Esconde subtarefa antes de mover
     if (subRow) subRow.style.display = 'none';
-
-    // Anima saída
     trRow.style.transition = 'opacity .3s';
     trRow.style.opacity = '0';
     setTimeout(() => {
@@ -543,8 +594,6 @@ function moveDemandaRow(trRow, toConcluidas) {
         if (subRow) destTbody.appendChild(subRow);
         trRow.style.opacity = '1';
         trRow.dataset.concluida = toConcluidas ? '1' : '0';
-
-        // Abre a tabela concluídas automaticamente ao mover para lá
         if (toConcluidas && !wrapperConc.classList.contains('open')) {
             wrapperConc.classList.add('open');
             btnToggle.classList.add('open');
@@ -568,10 +617,8 @@ function bindStatusSelect(sel) {
             const tr = this.closest('tr.demanda-row');
             const eraConcluida = tr.dataset.concluida === '1';
             const agoraÉConcluida = STATUS_FINAL.includes(status);
-
             tr.classList.remove('table-danger');
             if (data.atrasado && !agoraÉConcluida) tr.classList.add('table-danger');
-
             if (!eraConcluida && agoraÉConcluida) {
                 moveDemandaRow(tr, true);
             } else if (eraConcluida && !agoraÉConcluida) {
@@ -610,6 +657,40 @@ document.querySelectorAll('.sub-status-select').forEach(sel => {
         });
     });
 });
+
+// ── Botão Enviar para o Planner ──
+function bindPlannerBtn(btn) {
+    btn.addEventListener('click', function () {
+        if (this.classList.contains('enviado') || this.classList.contains('loading')) return;
+        const titulo   = this.dataset.titulo;
+        const deadline = this.dataset.deadline;
+        const btnEl    = this;
+        btnEl.classList.add('loading');
+        btnEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Enviando...';
+
+        const body = new URLSearchParams({ acao: 'criar', titulo, deadline });
+        fetch('sync_planner.php', { method: 'POST', body })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    btnEl.classList.remove('loading');
+                    btnEl.classList.add('enviado');
+                    btnEl.innerHTML = '<i class="bi bi-check-circle-fill"></i> Enviado!';
+                    showToast('✅ Tarefa criada no Planner com sucesso!', 'success');
+                } else {
+                    btnEl.classList.remove('loading');
+                    btnEl.innerHTML = '<img src="https://upload.wikimedia.org/wikipedia/commons/7/7e/Microsoft_Planner_2019.svg" width="16" height="16" alt="Planner"> Planner';
+                    showToast('❌ Erro: ' + (data.error ?? 'Falha ao enviar'), 'danger');
+                }
+            })
+            .catch(() => {
+                btnEl.classList.remove('loading');
+                btnEl.innerHTML = '<img src="https://upload.wikimedia.org/wikipedia/commons/7/7e/Microsoft_Planner_2019.svg" width="16" height="16" alt="Planner"> Planner';
+                showToast('❌ Erro de conexão com o servidor', 'danger');
+            });
+    });
+}
+document.querySelectorAll('.planner-btn').forEach(bindPlannerBtn);
 
 updateBadges();
 </script>
