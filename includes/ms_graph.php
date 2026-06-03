@@ -17,6 +17,23 @@ function ms_load_env(): void {
 ms_load_env();
 
 /**
+ * Mapeamento de status do GVA → nome do bucket no Planner
+ */
+function planner_bucket_por_status(string $status): string {
+    return match (strtolower(trim($status))) {
+        'pendente'              => '📋 Pendente',
+        'em andamento'          => '🔄 Em andamento',
+        'aguardando'            => '⏳ Aguardando',
+        'aguardando cliente'    => '⏳ Aguardando',
+        'produzindo'            => '🛠 Produzindo',
+        'done', 'enviado',
+        'publicado', 'concluído',
+        'concluido'             => '✅ Concluído',
+        default                 => '📋 Pendente',
+    };
+}
+
+/**
  * Obtém token de acesso via Client Credentials (app-only)
  */
 function ms_get_token(): string {
@@ -59,16 +76,16 @@ function ms_get_token(): string {
 /**
  * Faz chamada à Graph API
  */
-function ms_graph_request(string $method, string $endpoint, array $body = [], string $token = ''): array {
+function ms_graph_request(string $method, string $endpoint, array $body = [], string $token = '', array $extraHeaders = []): array {
     if (!$token) $token = ms_get_token();
 
     $url = str_starts_with($endpoint, 'https') ? $endpoint : 'https://graph.microsoft.com/v1.0' . $endpoint;
 
     $ch = curl_init($url);
-    $headers = [
+    $headers = array_merge([
         'Authorization: Bearer ' . $token,
         'Content-Type: application/json',
-    ];
+    ], $extraHeaders);
 
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
@@ -92,19 +109,82 @@ function ms_graph_request(string $method, string $endpoint, array $body = [], st
         throw new RuntimeException("Graph API [{$httpCode}]: {$msg}");
     }
 
-    return $decoded;
+    return array_merge($decoded, ['_http_code' => $httpCode]);
 }
 
 /**
- * Cria uma tarefa no Planner
+ * Lista todos os buckets de um plano
  */
-function planner_criar_tarefa(string $titulo, string $planId, ?string $deadline = null, ?string $assigneeId = null): array {
+function planner_listar_buckets(string $planId, string $token = ''): array {
+    if (!$token) $token = ms_get_token();
+    $result = ms_graph_request('GET', "/planner/plans/{$planId}/buckets", [], $token);
+    return $result['value'] ?? [];
+}
+
+/**
+ * Cria um bucket no plano e retorna seu ID
+ */
+function planner_criar_bucket(string $nome, string $planId, string $token = ''): string {
+    if (!$token) $token = ms_get_token();
+    $result = ms_graph_request('POST', '/planner/buckets', [
+        'name'      => $nome,
+        'planId'    => $planId,
+        'orderHint' => ' !',
+    ], $token);
+    return $result['id'] ?? throw new RuntimeException("Falha ao criar bucket '{$nome}'");
+}
+
+/**
+ * Garante que todos os buckets de status existam no plano.
+ * Retorna um array [ 'nome do bucket' => 'bucketId' ]
+ */
+function planner_garantir_buckets(string $planId, string $token = ''): array {
+    if (!$token) $token = ms_get_token();
+
+    $nomesBuckets = [
+        '📋 Pendente',
+        '🔄 Em andamento',
+        '⏳ Aguardando',
+        '🛠 Produzindo',
+        '✅ Concluído',
+    ];
+
+    // Busca buckets existentes
+    $existentes = planner_listar_buckets($planId, $token);
+    $mapa = [];
+    foreach ($existentes as $b) {
+        $mapa[$b['name']] = $b['id'];
+    }
+
+    // Cria os que faltam
+    foreach ($nomesBuckets as $nome) {
+        if (!isset($mapa[$nome])) {
+            $mapa[$nome] = planner_criar_bucket($nome, $planId, $token);
+        }
+    }
+
+    return $mapa;
+}
+
+/**
+ * Cria uma tarefa no Planner dentro do bucket correto para o status
+ */
+function planner_criar_tarefa(string $titulo, string $planId, ?string $deadline = null, ?string $assigneeId = null, string $status = 'pendente'): array {
     $token = ms_get_token();
+
+    // Garante que os buckets existem e pega o ID do bucket correto
+    $buckets      = planner_garantir_buckets($planId, $token);
+    $nomeBucket   = planner_bucket_por_status($status);
+    $bucketId     = $buckets[$nomeBucket] ?? null;
 
     $body = [
         'planId' => $planId,
         'title'  => $titulo,
     ];
+
+    if ($bucketId) {
+        $body['bucketId'] = $bucketId;
+    }
 
     if ($deadline) {
         $body['dueDateTime'] = date('Y-m-d\TH:i:s\Z', strtotime($deadline));
@@ -120,6 +200,45 @@ function planner_criar_tarefa(string $titulo, string $planId, ?string $deadline 
     }
 
     return ms_graph_request('POST', '/planner/tasks', $body, $token);
+}
+
+/**
+ * Move uma tarefa para o bucket correspondente ao novo status
+ */
+function planner_mover_bucket(string $taskId, string $planId, string $novoStatus, string $etag): array {
+    $token = ms_get_token();
+
+    $buckets    = planner_garantir_buckets($planId, $token);
+    $nomeBucket = planner_bucket_por_status($novoStatus);
+    $bucketId   = $buckets[$nomeBucket] ?? null;
+
+    if (!$bucketId) {
+        throw new RuntimeException("Bucket não encontrado para o status: {$novoStatus}");
+    }
+
+    // Busca etag atualizado da tarefa se não fornecido
+    $etagAtual = $etag;
+    if (!$etagAtual) {
+        $taskData  = ms_graph_request('GET', "/planner/tasks/{$taskId}", [], $token);
+        $etagAtual = $taskData['@odata.etag'] ?? '';
+    }
+
+    $ch = curl_init('https://graph.microsoft.com/v1.0/planner/tasks/' . $taskId);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CUSTOMREQUEST  => 'PATCH',
+        CURLOPT_HTTPHEADER     => [
+            'Authorization: Bearer ' . $token,
+            'Content-Type: application/json',
+            'If-Match: ' . $etagAtual,
+        ],
+        CURLOPT_POSTFIELDS => json_encode(['bucketId' => $bucketId]),
+        CURLOPT_TIMEOUT    => 20,
+    ]);
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    return ['http_code' => $httpCode, 'response' => $response];
 }
 
 /**
