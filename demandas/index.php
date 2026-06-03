@@ -46,11 +46,13 @@ if ($isAdmin && $filtroResponsavel !== '') {
 
 $sqlWhere = count($where) ? 'WHERE ' . implode(' AND ', $where) : '';
 
+// ── [5] Ordenar por deadline (mais próximos primeiro, sem deadline por último) ──
 $sql = "SELECT d.*, u.nome AS responsavel_nome
         FROM demandas d
         JOIN usuarios u ON d.id_usuario = u.id
         $sqlWhere
-        ORDER BY d.created_at DESC";
+        ORDER BY CASE WHEN d.deadline IS NULL OR d.deadline = '' THEN 1 ELSE 0 END ASC,
+                 d.deadline ASC";
 
 $stmt = $conn->prepare($sql);
 if ($params) { $stmt->bind_param($types, ...$params); }
@@ -60,10 +62,10 @@ $stmt->close();
 
 // ── Busca todas as subtarefas das demandas listadas ───────────────────
 $subtarefasPorDemanda = [];
+$todasSubtarefas      = [];
 if (!empty($demandas)) {
     $ids = implode(',', array_column($demandas, 'id'));
 
-    // Nível 2 vê apenas subtarefas atribuídas a ele
     $subWhere = $isAdmin ? '' : "AND s.id_usuario = $userId";
 
     $sqlSub = "SELECT s.*, u.nome AS responsavel_nome
@@ -75,16 +77,49 @@ if (!empty($demandas)) {
     $resSub = $conn->query($sqlSub);
     while ($sub = $resSub->fetch_assoc()) {
         $subtarefasPorDemanda[(int)$sub['id_demanda']][] = $sub;
+        $todasSubtarefas[] = $sub;
     }
 }
 
-// KPIs
+// ── Status finais (não marcam como atrasado) ──────────────────────────
+$statusFinal = ['Done', 'Enviado', 'Publicado'];
+
+// ── [2][4] KPIs incluindo subtarefas ─────────────────────────────────
+$hoje = date('Y-m-d');
+
+// KPIs de demandas
 $kpiWhere  = !$isAdmin ? "WHERE id_usuario = $userId" : '';
 $kpiResult = $conn->query("SELECT status, COUNT(*) as total FROM demandas $kpiWhere GROUP BY status");
-$kpis      = ['total' => 0, 'Done' => 0, 'Em andamento' => 0, 'Pendente' => 0, 'Atrasado' => 0];
+$kpis = [
+    'total'        => 0,
+    'concluidas'   => 0,  // Done + Enviado + Publicado
+    'em_andamento' => 0,
+    'pendente'     => 0,
+    'atrasado'     => 0,
+];
 while ($k = $kpiResult->fetch_assoc()) {
-    $kpis[$k['status']] = (int)$k['total'];
-    $kpis['total']     += (int)$k['total'];
+    $kpis['total'] += (int)$k['total'];
+    if (in_array($k['status'], $statusFinal))         $kpis['concluidas']   += (int)$k['total'];
+    if ($k['status'] === 'Em andamento')               $kpis['em_andamento'] += (int)$k['total'];
+    if ($k['status'] === 'Pendente')                   $kpis['pendente']     += (int)$k['total'];
+}
+
+// KPIs de subtarefas (soma junto)
+foreach ($todasSubtarefas as $s) {
+    $kpis['total']++;
+    if (in_array($s['status'], $statusFinal))  $kpis['concluidas']++;
+    if ($s['status'] === 'Em andamento')        $kpis['em_andamento']++;
+    if ($s['status'] === 'Pendente')            $kpis['pendente']++;
+}
+
+// Atrasados: demandas + subtarefas com deadline passada e status não final
+foreach ($demandas as $d) {
+    if ($d['deadline'] && $d['deadline'] < $hoje && !in_array($d['status'], $statusFinal))
+        $kpis['atrasado']++;
+}
+foreach ($todasSubtarefas as $s) {
+    if ($s['deadline'] && $s['deadline'] < $hoje && !in_array($s['status'], $statusFinal))
+        $kpis['atrasado']++;
 }
 
 $usuarios = [];
@@ -102,9 +137,6 @@ $categorias = [
 ];
 
 $meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-
-// Status que indicam tarefa finalizada (não devem ser marcados como atrasados)
-$statusFinal = ['Done', 'Enviado', 'Publicado'];
 
 $flash = $_SESSION['flash'] ?? null;
 unset($_SESSION['flash']);
@@ -151,10 +183,10 @@ unset($_SESSION['flash']);
             </div>
             <?php endif; ?>
 
-            <!-- Título -->
+            <!-- [1] Título corrigido -->
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div>
-                    <h4 class="mb-0"><i class="bi bi-kanban me-2 text-primary"></i>Controle de Demandas</h4>
+                    <h4 class="mb-0"><i class="bi bi-kanban me-2 text-primary"></i>Controle de Atividades Equipe GVA</h4>
                     <small class="text-muted">Brasil DNA 2026</small>
                 </div>
                 <a href="forms/nova_demanda.php" class="btn btn-primary">
@@ -162,7 +194,7 @@ unset($_SESSION['flash']);
                 </a>
             </div>
 
-            <!-- KPIs -->
+            <!-- [2][4] KPIs com subtarefas e somas corretas -->
             <div class="row g-3 mb-4">
                 <div class="col-6 col-md-2">
                     <div class="kpi-card border-primary">
@@ -173,32 +205,32 @@ unset($_SESSION['flash']);
                 <div class="col-6 col-md-2">
                     <div class="kpi-card border-success">
                         <div class="kpi-label">Concluídas</div>
-                        <div class="kpi-value text-success"><?= $kpis['Done'] ?></div>
+                        <div class="kpi-value text-success"><?= $kpis['concluidas'] ?></div>
                     </div>
                 </div>
                 <div class="col-6 col-md-2">
                     <div class="kpi-card border-warning">
                         <div class="kpi-label">Em Andamento</div>
-                        <div class="kpi-value text-warning"><?= $kpis['Em andamento'] ?></div>
+                        <div class="kpi-value text-warning"><?= $kpis['em_andamento'] ?></div>
                     </div>
                 </div>
                 <div class="col-6 col-md-2">
                     <div class="kpi-card border-secondary">
                         <div class="kpi-label">Pendentes</div>
-                        <div class="kpi-value text-secondary"><?= $kpis['Pendente'] ?></div>
+                        <div class="kpi-value text-secondary"><?= $kpis['pendente'] ?></div>
                     </div>
                 </div>
                 <div class="col-6 col-md-2">
                     <div class="kpi-card border-danger">
                         <div class="kpi-label">Atrasadas</div>
-                        <div class="kpi-value text-danger"><?= $kpis['Atrasado'] ?></div>
+                        <div class="kpi-value text-danger"><?= $kpis['atrasado'] ?></div>
                     </div>
                 </div>
                 <?php if ($kpis['total'] > 0): ?>
                 <div class="col-6 col-md-2">
                     <div class="kpi-card border-info">
                         <div class="kpi-label">% Concluído</div>
-                        <div class="kpi-value text-info"><?= round(($kpis['Done'] / $kpis['total']) * 100) ?>%</div>
+                        <div class="kpi-value text-info"><?= round(($kpis['concluidas'] / $kpis['total']) * 100) ?>%</div>
                     </div>
                 </div>
                 <?php endif; ?>
@@ -275,25 +307,32 @@ unset($_SESSION['flash']);
                         <tr><td colspan="10" class="text-center text-muted py-4"><i class="bi bi-inbox fs-3 d-block mb-2"></i>Nenhuma demanda encontrada.</td></tr>
                     <?php else: ?>
                     <?php foreach ($demandas as $d):
-                        $hoje        = date('Y-m-d');
                         $atrasado    = ($d['deadline'] && $d['deadline'] < $hoje && !in_array($d['status'], $statusFinal));
+                        $concluida   = in_array($d['status'], $statusFinal);
                         $prioClass   = ['Alta'=>'danger','Media'=>'warning','Baixa'=>'secondary'][$d['prioridade']] ?? 'secondary';
                         $statusClass = [
                             'Done'=>'success','Em andamento'=>'primary','Produzindo'=>'info',
-                            'Enviado'=>'info','Publicado'=>'success','Aguardando'=>'warning',
+                            'Enviado'=>'success','Publicado'=>'success','Aguardando'=>'warning',
                             'Pendente'=>'secondary','Atrasado'=>'danger'
                         ][$d['status']] ?? 'secondary';
                         $podeEditar  = pode_editar_tarefa((int)$d['id_usuario']);
                         $subs        = $subtarefasPorDemanda[(int)$d['id']] ?? [];
                         $temSubs     = !empty($subs);
                         $collapseId  = 'sub-' . $d['id'];
+                        // [6] Linha verde para concluídas, vermelho para atrasadas
+                        $trClass = $atrasado ? 'table-danger' : ($concluida ? 'table-success' : '');
                     ?>
                         <!-- Linha da demanda -->
-                        <tr class="<?= $atrasado ? 'table-danger' : '' ?>">
-                            <!-- Botão expandir subtarefas -->
+                        <tr class="<?= $trClass ?>">
+                            <!-- [3] Botão toggle com ícone que muda ao expandir/recolher -->
                             <td class="text-center">
                                 <?php if ($temSubs): ?>
-                                <button class="toggle-sub-btn" data-bs-toggle="collapse" data-bs-target="#<?= $collapseId ?>" aria-expanded="false" title="Ver subtarefas">
+                                <button class="toggle-sub-btn"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#<?= $collapseId ?>"
+                                    aria-expanded="false"
+                                    title="Ver/ocultar subtarefas"
+                                    onclick="this.querySelector('i').classList.toggle('bi-diagram-3'); this.querySelector('i').classList.toggle('bi-dash-circle');">
                                     <i class="bi bi-diagram-3 text-primary"></i>
                                     <span class="badge bg-primary sub-count-badge"><?= count($subs) ?></span>
                                 </button>
@@ -354,15 +393,18 @@ unset($_SESSION['flash']);
 
                                         <?php foreach ($subs as $sub):
                                             $subAtrasado   = ($sub['deadline'] && $sub['deadline'] < $hoje && !in_array($sub['status'], $statusFinal));
+                                            $subConcluida  = in_array($sub['status'], $statusFinal);
                                             $subPrioClass  = ['Alta'=>'danger','Media'=>'warning','Baixa'=>'secondary'][$sub['prioridade']] ?? 'secondary';
                                             $subStatusClass= [
                                                 'Done'=>'success','Em andamento'=>'primary','Produzindo'=>'info',
-                                                'Enviado'=>'info','Publicado'=>'success','Aguardando'=>'warning',
+                                                'Enviado'=>'success','Publicado'=>'success','Aguardando'=>'warning',
                                                 'Pendente'=>'secondary','Atrasado'=>'danger'
                                             ][$sub['status']] ?? 'secondary';
                                             $podEditSub = $isAdmin || (int)$sub['id_usuario'] === $userId;
+                                            // [6] borda verde para subtarefas concluídas
+                                            $subItemClass = $subAtrasado ? 'border-danger' : ($subConcluida ? 'border-success bg-success bg-opacity-10' : '');
                                         ?>
-                                        <div class="subtask-item <?= $subAtrasado ? 'border-danger' : '' ?>">
+                                        <div class="subtask-item <?= $subItemClass ?>">
                                             <!-- Título -->
                                             <span class="subtask-titulo">
                                                 <?= $subAtrasado ? '<i class="bi bi-exclamation-triangle-fill text-danger me-1"></i>' : '' ?>
@@ -387,7 +429,7 @@ unset($_SESSION['flash']);
                                             <!-- Status -->
                                             <?php if ($podEditSub): ?>
                                             <select class="form-select form-select-sm sub-status-select" data-id="<?= $sub['id'] ?>" style="min-width:120px;font-size:.8rem">
-                                                <?php foreach (['Pendente','Em andamento','Produzindo','Aguardando','Done','Atrasado'] as $ss): ?>
+                                                <?php foreach (['Pendente','Em andamento','Produzindo','Aguardando','Enviado','Publicado','Done','Atrasado'] as $ss): ?>
                                                 <option value="<?= $ss ?>" <?= $sub['status'] === $ss ? 'selected' : '' ?>><?= $ss ?></option>
                                                 <?php endforeach; ?>
                                             </select>
@@ -427,6 +469,9 @@ unset($_SESSION['flash']);
 <?php include '../pages/footer.php'; ?>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+const statusFinal = ['Done', 'Enviado', 'Publicado'];
+const hoje = new Date().toISOString().split('T')[0];
+
 // Status das demandas
 document.querySelectorAll('.status-select').forEach(sel => {
     sel.addEventListener('change', function () {
@@ -439,7 +484,15 @@ document.querySelectorAll('.status-select').forEach(sel => {
         .then(r => r.json())
         .then(data => {
             if (data.success) {
-                this.closest('tr').classList.toggle('table-danger', data.atrasado);
+                const tr = this.closest('tr');
+                const deadline = tr.querySelector('td:nth-child(7)')?.textContent?.trim();
+                // [6] Atualiza cor da linha conforme novo status
+                tr.classList.remove('table-danger', 'table-success');
+                if (statusFinal.includes(status)) {
+                    tr.classList.add('table-success');
+                } else if (data.atrasado) {
+                    tr.classList.add('table-danger');
+                }
             }
         });
     });
@@ -458,11 +511,15 @@ document.querySelectorAll('.sub-status-select').forEach(sel => {
         .then(data => {
             if (data.success) {
                 const item = this.closest('.subtask-item');
-                item.classList.toggle('border-danger', data.atrasado);
+                item.classList.remove('border-danger', 'border-success', 'bg-success', 'bg-opacity-10');
+                if (statusFinal.includes(status)) {
+                    item.classList.add('border-success', 'bg-success', 'bg-opacity-10');
+                } else if (data.atrasado) {
+                    item.classList.add('border-danger');
+                }
                 const icone = item.querySelector('.bi-exclamation-triangle-fill');
                 if (data.atrasado && !icone) {
-                    const titulo = item.querySelector('.subtask-titulo');
-                    titulo.insertAdjacentHTML('afterbegin', '<i class="bi bi-exclamation-triangle-fill text-danger me-1"></i>');
+                    item.querySelector('.subtask-titulo').insertAdjacentHTML('afterbegin', '<i class="bi bi-exclamation-triangle-fill text-danger me-1"></i>');
                 } else if (!data.atrasado && icone) {
                     icone.remove();
                 }
