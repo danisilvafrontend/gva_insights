@@ -126,6 +126,9 @@ $meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto'
 $flash = $_SESSION['flash'] ?? null;
 unset($_SESSION['flash']);
 
+// SVG inline do Microsoft Planner (sem dependência externa)
+define('PLANNER_SVG', '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="4" fill="#0078d4"/><rect x="4" y="8" width="11" height="7" rx="1.5" fill="#fff"/><rect x="17" y="8" width="11" height="7" rx="1.5" fill="#50e6ff"/><rect x="4" y="17" width="7" height="7" rx="1.5" fill="#50e6ff"/><rect x="13" y="17" width="7" height="7" rx="1.5" fill="#fff"/><rect x="22" y="17" width="6" height="7" rx="1.5" fill="#50e6ff"/></svg>');
+
 function renderRows(array $list, array $subtarefasPorDemanda, array $statusFinal, string $hoje, bool $isAdmin, bool $podeEditarFn, int $userId): void {
     if (empty($list)) {
         echo '<tr><td colspan="11" class="text-center text-muted py-4"><i class="bi bi-inbox fs-3 d-block mb-2"></i>Nenhuma demanda encontrada.</td></tr>';
@@ -182,7 +185,6 @@ function renderRows(array $list, array $subtarefasPorDemanda, array $statusFinal
                 <?php endif; ?>
             </td>
             <td>
-                <!-- Botão Enviar para o Planner -->
                 <?php if ($isAdmin): ?>
                 <button
                     class="btn btn-sm btn-planner planner-btn"
@@ -190,7 +192,7 @@ function renderRows(array $list, array $subtarefasPorDemanda, array $statusFinal
                     data-id="<?= $d['id'] ?>"
                     data-titulo="<?= htmlspecialchars($titulo, ENT_QUOTES) ?>"
                     data-deadline="<?= $d['deadline'] ?? '' ?>">
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/7/7e/Microsoft_Planner_2019.svg" width="16" height="16" alt="Planner"> Planner
+                    <?= PLANNER_SVG ?> Planner
                 </button>
                 <?php endif; ?>
             </td>
@@ -536,6 +538,7 @@ function renderRows(array $list, array $subtarefasPorDemanda, array $statusFinal
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 const STATUS_FINAL = ['Done', 'Enviado', 'Publicado'];
+const PLANNER_BTN_DEFAULT = `<?= PLANNER_SVG ?> Planner`;
 
 // ── Toggle tabela concluídas ──
 const btnToggle   = document.getElementById('btn-toggle-concluidas');
@@ -561,7 +564,7 @@ document.querySelectorAll('.toggle-sub-btn[data-target]').forEach(bindToggleSub)
 
 // ── Toast helper ──
 function showToast(msg, tipo = 'success') {
-    const el  = document.getElementById('toastPlanner');
+    const el    = document.getElementById('toastPlanner');
     const msgEl = document.getElementById('toastPlannerMsg');
     el.classList.remove('bg-success', 'bg-danger');
     el.classList.add('bg-' + tipo);
@@ -569,17 +572,15 @@ function showToast(msg, tipo = 'success') {
     bootstrap.Toast.getOrCreateInstance(el, { delay: 4000 }).show();
 }
 
-// Atualiza badges de contagem
 function updateBadges() {
-    const nAtivas    = document.querySelectorAll('#tbody-ativas tr.demanda-row').length;
-    const nConc      = document.querySelectorAll('#tbody-concluidas tr.demanda-row').length;
-    document.getElementById('badge-ativas').textContent    = nAtivas;
+    const nAtivas = document.querySelectorAll('#tbody-ativas tr.demanda-row').length;
+    const nConc   = document.querySelectorAll('#tbody-concluidas tr.demanda-row').length;
+    document.getElementById('badge-ativas').textContent     = nAtivas;
     document.getElementById('badge-concluidas').textContent = nConc;
     document.getElementById('empty-ativas').style.display    = nAtivas === 0 ? '' : 'none';
     document.getElementById('empty-concluidas').style.display = nConc  === 0 ? '' : 'none';
 }
 
-// Move linha entre tabelas
 function moveDemandaRow(trRow, toConcluidas) {
     const subRowId  = trRow.querySelector('.toggle-sub-btn[data-target]')?.dataset.target;
     const subRow    = subRowId ? document.getElementById(subRowId) : null;
@@ -602,7 +603,6 @@ function moveDemandaRow(trRow, toConcluidas) {
     }, 300);
 }
 
-// ── Status das demandas ──
 function bindStatusSelect(sel) {
     sel.addEventListener('change', function () {
         const id = this.dataset.id, status = this.value;
@@ -615,21 +615,17 @@ function bindStatusSelect(sel) {
         .then(data => {
             if (!data.success) return;
             const tr = this.closest('tr.demanda-row');
-            const eraConcluida = tr.dataset.concluida === '1';
-            const agoraÉConcluida = STATUS_FINAL.includes(status);
+            const eraConcluida   = tr.dataset.concluida === '1';
+            const agoraConcluida = STATUS_FINAL.includes(status);
             tr.classList.remove('table-danger');
-            if (data.atrasado && !agoraÉConcluida) tr.classList.add('table-danger');
-            if (!eraConcluida && agoraÉConcluida) {
-                moveDemandaRow(tr, true);
-            } else if (eraConcluida && !agoraÉConcluida) {
-                moveDemandaRow(tr, false);
-            }
+            if (data.atrasado && !agoraConcluida) tr.classList.add('table-danger');
+            if (!eraConcluida && agoraConcluida)  moveDemandaRow(tr, true);
+            else if (eraConcluida && !agoraConcluida) moveDemandaRow(tr, false);
         });
     });
 }
 document.querySelectorAll('.status-select').forEach(bindStatusSelect);
 
-// ── Status das subtarefas ──
 document.querySelectorAll('.sub-status-select').forEach(sel => {
     sel.addEventListener('change', function () {
         const id = this.dataset.id, status = this.value;
@@ -643,22 +639,18 @@ document.querySelectorAll('.sub-status-select').forEach(sel => {
             if (data.success) {
                 const item = this.closest('.subtask-item');
                 item.classList.remove('border-danger', 'border-success', 'bg-success', 'bg-opacity-10');
-                if (STATUS_FINAL.includes(status)) {
-                    item.classList.add('border-success', 'bg-success', 'bg-opacity-10');
-                } else if (data.atrasado) {
-                    item.classList.add('border-danger');
-                }
+                if (STATUS_FINAL.includes(status)) item.classList.add('border-success', 'bg-success', 'bg-opacity-10');
+                else if (data.atrasado)             item.classList.add('border-danger');
                 const icone = item.querySelector('.bi-exclamation-triangle-fill');
                 if (data.atrasado && !icone)
                     item.querySelector('.subtask-titulo').insertAdjacentHTML('afterbegin', '<i class="bi bi-exclamation-triangle-fill text-danger me-1"></i>');
-                else if (!data.atrasado && icone)
-                    icone.remove();
+                else if (!data.atrasado && icone) icone.remove();
             }
         });
     });
 });
 
-// ── Botão Enviar para o Planner ──
+// ── Botão Planner ──
 function bindPlannerBtn(btn) {
     btn.addEventListener('click', function () {
         if (this.classList.contains('enviado') || this.classList.contains('loading')) return;
@@ -668,26 +660,28 @@ function bindPlannerBtn(btn) {
         btnEl.classList.add('loading');
         btnEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Enviando...';
 
-        const body = new URLSearchParams({ acao: 'criar', titulo, deadline });
-        fetch('sync_planner.php', { method: 'POST', body })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    btnEl.classList.remove('loading');
-                    btnEl.classList.add('enviado');
-                    btnEl.innerHTML = '<i class="bi bi-check-circle-fill"></i> Enviado!';
-                    showToast('✅ Tarefa criada no Planner com sucesso!', 'success');
-                } else {
-                    btnEl.classList.remove('loading');
-                    btnEl.innerHTML = '<img src="https://upload.wikimedia.org/wikipedia/commons/7/7e/Microsoft_Planner_2019.svg" width="16" height="16" alt="Planner"> Planner';
-                    showToast('❌ Erro: ' + (data.error ?? 'Falha ao enviar'), 'danger');
-                }
-            })
-            .catch(() => {
+        fetch('sync_planner.php', {
+            method: 'POST',
+            body: new URLSearchParams({ acao: 'criar', titulo, deadline })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
                 btnEl.classList.remove('loading');
-                btnEl.innerHTML = '<img src="https://upload.wikimedia.org/wikipedia/commons/7/7e/Microsoft_Planner_2019.svg" width="16" height="16" alt="Planner"> Planner';
-                showToast('❌ Erro de conexão com o servidor', 'danger');
-            });
+                btnEl.classList.add('enviado');
+                btnEl.innerHTML = '<i class="bi bi-check-circle-fill"></i> Enviado!';
+                showToast('✅ Tarefa criada no Planner com sucesso!', 'success');
+            } else {
+                btnEl.classList.remove('loading');
+                btnEl.innerHTML = PLANNER_BTN_DEFAULT;
+                showToast('❌ Erro: ' + (data.error ?? 'Falha ao enviar'), 'danger');
+            }
+        })
+        .catch(() => {
+            btnEl.classList.remove('loading');
+            btnEl.innerHTML = PLANNER_BTN_DEFAULT;
+            showToast('❌ Erro de conexão com o servidor', 'danger');
+        });
     });
 }
 document.querySelectorAll('.planner-btn').forEach(bindPlannerBtn);
