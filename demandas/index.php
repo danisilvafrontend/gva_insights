@@ -147,6 +147,8 @@ unset($_SESSION['flash']);
         .toggle-sub-btn { background:none; border:none; padding:0 4px; color:#6c757d; cursor:pointer; }
         .toggle-sub-btn:hover { color:#0d6efd; }
         .sub-count-badge { font-size:.7rem; }
+        /* Subtask row oculta por padrão */
+        .subtask-row { display: none; }
     </style>
 </head>
 <body>
@@ -297,19 +299,15 @@ unset($_SESSION['flash']);
                         $podeEditar  = pode_editar_tarefa((int)$d['id_usuario']);
                         $subs        = $subtarefasPorDemanda[(int)$d['id']] ?? [];
                         $temSubs     = !empty($subs);
-                        $collapseId  = 'sub-' . $d['id'];
+                        $subRowId    = 'subrow-' . $d['id'];
                         $trClass     = $atrasado ? 'table-danger' : ($concluida ? 'table-success' : '');
                     ?>
                         <tr class="<?= $trClass ?>">
                             <td class="text-center">
                                 <?php if ($temSubs): ?>
-                                <!-- Botão toggle: sem onclick inline, controlado pelo JS via eventos Bootstrap -->
                                 <button class="toggle-sub-btn"
-                                    data-bs-toggle="collapse"
-                                    data-bs-target="#<?= $collapseId ?>"
-                                    aria-expanded="false"
-                                    aria-controls="<?= $collapseId ?>"
-                                    title="Ver/ocultar subtarefas">
+                                    data-target="<?= $subRowId ?>"
+                                    title="Ver subtarefas">
                                     <i class="bi bi-diagram-3 text-primary"></i>
                                     <span class="badge bg-primary sub-count-badge"><?= count($subs) ?></span>
                                 </button>
@@ -352,69 +350,67 @@ unset($_SESSION['flash']);
                         </tr>
 
                         <?php if ($temSubs): ?>
-                        <tr class="subtask-row">
+                        <tr class="subtask-row" id="<?= $subRowId ?>">
                             <td colspan="10">
-                                <div class="collapse" id="<?= $collapseId ?>">
-                                    <div class="subtask-block">
-                                        <div class="subtask-header">
-                                            <span class="text-muted" style="font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em">
-                                                <i class="bi bi-diagram-3 me-1"></i>Subtarefas (<?= count($subs) ?>)
-                                            </span>
-                                            <?php if ($isAdmin): ?>
-                                            <a href="forms/nova_subtarefa.php?id_demanda=<?= $d['id'] ?>" class="btn btn-xs btn-outline-success btn-sm py-0 px-2" style="font-size:.75rem">
-                                                <i class="bi bi-plus-lg me-1"></i>Adicionar
-                                            </a>
-                                            <?php endif; ?>
-                                        </div>
-
-                                        <?php foreach ($subs as $sub):
-                                            $subAtrasado  = ($sub['deadline'] && $sub['deadline'] < $hoje && !in_array($sub['status'], $statusFinal));
-                                            $subConcluida = in_array($sub['status'], $statusFinal);
-                                            $subPrioClass = ['Alta'=>'danger','Media'=>'warning','Baixa'=>'secondary'][$sub['prioridade']] ?? 'secondary';
-                                            $subStatusClass = [
-                                                'Done'=>'success','Em andamento'=>'primary','Produzindo'=>'info',
-                                                'Enviado'=>'success','Publicado'=>'success','Aguardando'=>'warning',
-                                                'Pendente'=>'secondary','Atrasado'=>'danger'
-                                            ][$sub['status']] ?? 'secondary';
-                                            $podEditSub   = $isAdmin || (int)$sub['id_usuario'] === $userId;
-                                            $subItemClass = $subAtrasado ? 'border-danger' : ($subConcluida ? 'border-success bg-success bg-opacity-10' : '');
-                                        ?>
-                                        <div class="subtask-item <?= $subItemClass ?>">
-                                            <span class="subtask-titulo">
-                                                <?= $subAtrasado ? '<i class="bi bi-exclamation-triangle-fill text-danger me-1"></i>' : '' ?>
-                                                <?= htmlspecialchars($sub['titulo']) ?>
-                                            </span>
-                                            <span class="subtask-resp">
-                                                <i class="bi bi-person me-1"></i><?= htmlspecialchars($sub['responsavel_nome']) ?>
-                                            </span>
-                                            <?php if ($sub['deadline']): ?>
-                                            <span class="subtask-dead">
-                                                <i class="bi bi-calendar3 me-1"></i><?= date('d/m/Y', strtotime($sub['deadline'])) ?>
-                                            </span>
-                                            <?php endif; ?>
-                                            <span class="badge bg-<?= $subPrioClass ?>" style="font-size:.7rem"><?= $sub['prioridade'] ?></span>
-                                            <?php if ($podEditSub): ?>
-                                            <select class="form-select form-select-sm sub-status-select" data-id="<?= $sub['id'] ?>" style="min-width:120px;font-size:.8rem">
-                                                <?php foreach (['Pendente','Em andamento','Produzindo','Aguardando','Enviado','Publicado','Done','Atrasado'] as $ss): ?>
-                                                <option value="<?= $ss ?>" <?= $sub['status'] === $ss ? 'selected' : '' ?>><?= $ss ?></option>
-                                                <?php endforeach; ?>
-                                            </select>
-                                            <?php else: ?>
-                                            <span class="badge bg-<?= $subStatusClass ?>" style="font-size:.7rem"><?= $sub['status'] ?></span>
-                                            <?php endif; ?>
-                                            <?php if ($podEditSub): ?>
-                                            <a href="forms/editar_subtarefa.php?id=<?= $sub['id'] ?>" class="btn btn-sm btn-outline-primary py-0 px-2" title="Editar subtarefa" style="font-size:.75rem">
-                                                <i class="bi bi-pencil"></i>
-                                            </a>
-                                            <?php endif; ?>
-                                            <?php if ($isAdmin): ?>
-                                            <a href="forms/deletar_subtarefa.php?id=<?= $sub['id'] ?>&id_demanda=<?= $d['id'] ?>" class="btn btn-sm btn-outline-danger py-0 px-2" title="Excluir subtarefa" onclick="return confirm('Excluir esta subtarefa?')" style="font-size:.75rem">
-                                                <i class="bi bi-trash"></i>
-                                            </a>
-                                            <?php endif; ?>
-                                        </div>
-                                        <?php endforeach; ?>
+                                <div class="subtask-block">
+                                    <div class="subtask-header">
+                                        <span class="text-muted" style="font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em">
+                                            <i class="bi bi-diagram-3 me-1"></i>Subtarefas (<?= count($subs) ?>)
+                                        </span>
+                                        <?php if ($isAdmin): ?>
+                                        <a href="forms/nova_subtarefa.php?id_demanda=<?= $d['id'] ?>" class="btn btn-xs btn-outline-success btn-sm py-0 px-2" style="font-size:.75rem">
+                                            <i class="bi bi-plus-lg me-1"></i>Adicionar
+                                        </a>
+                                        <?php endif; ?>
                                     </div>
+
+                                    <?php foreach ($subs as $sub):
+                                        $subAtrasado  = ($sub['deadline'] && $sub['deadline'] < $hoje && !in_array($sub['status'], $statusFinal));
+                                        $subConcluida = in_array($sub['status'], $statusFinal);
+                                        $subPrioClass = ['Alta'=>'danger','Media'=>'warning','Baixa'=>'secondary'][$sub['prioridade']] ?? 'secondary';
+                                        $subStatusClass = [
+                                            'Done'=>'success','Em andamento'=>'primary','Produzindo'=>'info',
+                                            'Enviado'=>'success','Publicado'=>'success','Aguardando'=>'warning',
+                                            'Pendente'=>'secondary','Atrasado'=>'danger'
+                                        ][$sub['status']] ?? 'secondary';
+                                        $podEditSub   = $isAdmin || (int)$sub['id_usuario'] === $userId;
+                                        $subItemClass = $subAtrasado ? 'border-danger' : ($subConcluida ? 'border-success bg-success bg-opacity-10' : '');
+                                    ?>
+                                    <div class="subtask-item <?= $subItemClass ?>">
+                                        <span class="subtask-titulo">
+                                            <?= $subAtrasado ? '<i class="bi bi-exclamation-triangle-fill text-danger me-1"></i>' : '' ?>
+                                            <?= htmlspecialchars($sub['titulo']) ?>
+                                        </span>
+                                        <span class="subtask-resp">
+                                            <i class="bi bi-person me-1"></i><?= htmlspecialchars($sub['responsavel_nome']) ?>
+                                        </span>
+                                        <?php if ($sub['deadline']): ?>
+                                        <span class="subtask-dead">
+                                            <i class="bi bi-calendar3 me-1"></i><?= date('d/m/Y', strtotime($sub['deadline'])) ?>
+                                        </span>
+                                        <?php endif; ?>
+                                        <span class="badge bg-<?= $subPrioClass ?>" style="font-size:.7rem"><?= $sub['prioridade'] ?></span>
+                                        <?php if ($podEditSub): ?>
+                                        <select class="form-select form-select-sm sub-status-select" data-id="<?= $sub['id'] ?>" style="min-width:120px;font-size:.8rem">
+                                            <?php foreach (['Pendente','Em andamento','Produzindo','Aguardando','Enviado','Publicado','Done','Atrasado'] as $ss): ?>
+                                            <option value="<?= $ss ?>" <?= $sub['status'] === $ss ? 'selected' : '' ?>><?= $ss ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                        <?php else: ?>
+                                        <span class="badge bg-<?= $subStatusClass ?>" style="font-size:.7rem"><?= $sub['status'] ?></span>
+                                        <?php endif; ?>
+                                        <?php if ($podEditSub): ?>
+                                        <a href="forms/editar_subtarefa.php?id=<?= $sub['id'] ?>" class="btn btn-sm btn-outline-primary py-0 px-2" title="Editar subtarefa" style="font-size:.75rem">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        <?php endif; ?>
+                                        <?php if ($isAdmin): ?>
+                                        <a href="forms/deletar_subtarefa.php?id=<?= $sub['id'] ?>&id_demanda=<?= $d['id'] ?>" class="btn btn-sm btn-outline-danger py-0 px-2" title="Excluir subtarefa" onclick="return confirm('Excluir esta subtarefa?')" style="font-size:.75rem">
+                                            <i class="bi bi-trash"></i>
+                                        </a>
+                                        <?php endif; ?>
+                                    </div>
+                                    <?php endforeach; ?>
                                 </div>
                             </td>
                         </tr>
@@ -434,23 +430,21 @@ unset($_SESSION['flash']);
 <script>
 const statusFinal = ['Done', 'Enviado', 'Publicado'];
 
-// ── Toggle subtarefas: troca ícone ao abrir/fechar via eventos Bootstrap ──
-document.querySelectorAll('.toggle-sub-btn[data-bs-toggle="collapse"]').forEach(btn => {
-    const targetId = btn.getAttribute('data-bs-target');
-    const collapseEl = document.querySelector(targetId);
-    if (!collapseEl) return;
-
-    collapseEl.addEventListener('show.bs.collapse', () => {
-        const icon = btn.querySelector('i');
-        icon.classList.remove('bi-diagram-3');
-        icon.classList.add('bi-dash-circle');
-        btn.title = 'Ocultar subtarefas';
-    });
-    collapseEl.addEventListener('hide.bs.collapse', () => {
-        const icon = btn.querySelector('i');
-        icon.classList.remove('bi-dash-circle');
-        icon.classList.add('bi-diagram-3');
-        btn.title = 'Ver subtarefas';
+// ── Toggle subtarefas: show/hide da <tr> via JS puro ──
+document.querySelectorAll('.toggle-sub-btn[data-target]').forEach(btn => {
+    btn.addEventListener('click', function () {
+        const row = document.getElementById(this.dataset.target);
+        if (!row) return;
+        const icon    = this.querySelector('i');
+        const visible = row.style.display === 'table-row';
+        row.style.display = visible ? 'none' : 'table-row';
+        if (visible) {
+            icon.className = 'bi bi-diagram-3 text-primary';
+            this.title = 'Ver subtarefas';
+        } else {
+            icon.className = 'bi bi-dash-circle text-danger';
+            this.title = 'Ocultar subtarefas';
+        }
     });
 });
 
