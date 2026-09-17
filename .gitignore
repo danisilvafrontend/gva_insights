@@ -1,7 +1,7 @@
 # Arquivos sensíveis — nunca versionar
 includes/db_connect.php
 includes/config.php
-
+.env
 # Configurações locais
 *.env
 .env
@@ -35,3 +35,5 @@ node_modules/
 *.backup
 *.sql
 *.zip
+*.exe
+*.pdf

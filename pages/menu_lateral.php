@@ -8,6 +8,11 @@
             </a>
         </li>
         <li class="nav-item mb-2">
+            <a href="https://insights.gvacompany.com/pages/pip.php" class="nav-link text-white">
+                <i class="bi bi-speedometer2 me-2"></i> Dashboard PIP
+            </a>
+        </li>
+        <li class="nav-item mb-2">
             <a href="https://insights.gvacompany.com/demandas/index.php" class="nav-link text-white">
                 <i class="bi bi-speedometer2 me-2"></i> Tarefas
             </a>
